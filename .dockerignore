@@ -1,0 +1,13 @@
+node_modules
+npm-debug.log
+data
+.git
+.env
+.gitignore
+README.md
+本地运行指南.md
+NAS部署指南.md
+public/coupon-stock-backup.zip
+*.db
+*.db-shm
+*.db-wal

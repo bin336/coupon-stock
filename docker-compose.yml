@@ -1,0 +1,18 @@
+services:
+  coupon-stock:
+    build: .
+    container_name: coupon-stock
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - DATA_DIR=/app/data
+      - TZ=Asia/Shanghai
+      # ↓↓↓ 首次启动前请务必修改以下三项 ↓↓↓
+      - ADMIN_USER=admin
+      - ADMIN_PASS=admin123
+      - JWT_SECRET=change-me-please-use-a-long-random-string
+    volumes:
+      # 数据与上传的二维码截图持久化到宿主机 ./data（升级/换机只动容器，数据不动）
+      - ./data:/app/data

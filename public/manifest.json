@@ -1,0 +1,9 @@
+{
+  "name": "券库 · 优惠券库存",
+  "short_name": "券库",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#fff7f2",
+  "theme_color": "#ff5a1f",
+  "icons": []
+}
