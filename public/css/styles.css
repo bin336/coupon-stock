@@ -203,6 +203,19 @@ body {
 .user-item .meta .name { font-weight: 700; }
 .user-item .meta .role { font-size: 12px; color: var(--muted); }
 
+/* ---------- 设置面板菜单 ---------- */
+.settings-menu { display: flex; flex-direction: column; gap: 10px; margin: 4px 0 6px; }
+.settings-item {
+  display: flex; align-items: center; gap: 14px; width: 100%; text-align: left;
+  background: #fafafa; border: 1px solid var(--line); border-radius: 12px;
+  padding: 14px 16px; cursor: pointer; transition: background .15s, border-color .15s;
+}
+.settings-item:hover { background: #fff7f2; border-color: var(--accent, #ff7a3c); }
+.settings-item .si-ico { font-size: 22px; line-height: 1; flex: 0 0 auto; }
+.settings-item .si-text { display: flex; flex-direction: column; gap: 2px; }
+.settings-item .si-text b { font-size: 15px; font-weight: 700; color: var(--text); }
+.settings-item .si-text small { font-size: 12px; color: var(--muted); }
+
 /* ---------- OCR 识别提示 ---------- */
 .ocr-status { border-radius: 10px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px; line-height: 1.5; }
 .ocr-status.loading { background: #fff7ed; color: #b45309; }

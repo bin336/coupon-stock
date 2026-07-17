@@ -153,9 +153,7 @@ function renderApp() {
         <div class="avatar">${escapeHtml((state.user.display_name || '?').slice(0,1))}</div>
         <span>${escapeHtml(state.user.display_name)}</span>
         <button class="icon" id="btn-batch">批量</button>
-        <button class="icon" id="btn-report" style="display:${state.user.role==='admin'?'inline-block':'none'}">报表</button>
-        <button class="icon" id="btn-logs" style="display:${state.user.role==='admin'?'inline-block':'none'}">日志</button>
-        <button class="icon" id="btn-users" style="display:${state.user.role==='admin'?'inline-block':'none'}">用户</button>
+        <button class="icon" id="btn-settings" style="display:${state.user.role==='admin'?'inline-block':'none'}">设置</button>
         <button class="icon" id="btn-logout">退出</button>
       </div>
   </div>
@@ -169,7 +167,7 @@ function renderApp() {
     <div class="stat" id="stat-pending" style="cursor:pointer">
       <div class="label">已售 · 待结算</div>
       <div class="value">${s.sold_unsettled || 0}</div>
-      <div class="sub">张未结算 · 点此结算</div>
+      <div class="sub">张未结算 · 点此看报表</div>
     </div>
     <div class="stat alert">
       <div class="label">7天内到期</div>
@@ -187,19 +185,20 @@ function renderApp() {
 
   <div class="list" id="list"></div>
 
-  ${state.report || state.logs ? '' : '<button class="fab" id="fab">+</button>'}`;
+  ${state.report || state.logs || state.settlement ? '' : '<button class="fab" id="fab">+</button>'}`;
 
   document.getElementById('btn-logout').onclick = logout;
-  const bu = document.getElementById('btn-users');
-  if (bu) bu.onclick = openUserModal;
-  const br = document.getElementById('btn-report');
-  if (br) br.onclick = openReport;
-  const bl = document.getElementById('btn-logs');
-  if (bl) bl.onclick = openLogs;
+  const bs = document.getElementById('btn-settings');
+  if (bs) bs.onclick = openSettings;
 
-  // 报表 / 日志 视图：工具栏与列表独立渲染，不再绑定默认搜索/筛选
+  // 报表 / 日志 / 结算 视图：工具栏与列表独立渲染，不再绑定默认搜索/筛选
   if (state.report) { bindReportToolbar(); loadReport(); return; }
   if (state.logs) { bindLogToolbar(); loadLogs(); return; }
+  if (state.settlement) {
+    const back = document.getElementById('btn-back');
+    if (back) back.onclick = () => { state.settlement = false; state.scope = 'default'; renderApp(); loadData(); };
+    return;
+  }
 
   const search = document.getElementById('search');
   let st;
@@ -225,14 +224,8 @@ function renderApp() {
   const bb = document.getElementById('btn-batch');
   if (bb) bb.onclick = openBatchModal;
 
-  if (state.settlement) {
-    const back = document.getElementById('btn-back');
-    if (back) back.onclick = () => { state.settlement = false; state.scope = 'default'; renderApp(); loadData(); };
-    return;
-  }
-
   const statPending = document.getElementById('stat-pending');
-  if (statPending) statPending.onclick = openSettlement;
+  if (statPending) statPending.onclick = openReport;
 
   renderList();
   renderRecentSearches();
@@ -250,6 +243,7 @@ function getToolbar() {
     const f = state.reportFilters;
     return `<div class="toolbar report-toolbar">
       <button class="btn ghost" id="btn-back">← 返回</button>
+      <button class="btn ghost" id="rf-settle">佣金结算</button>
       <input class="search" id="rf-owner" placeholder="所有人（留空=全部）" value="${escapeHtml(f.owner)}" />
       <div class="dt-group">
         <input type="date" class="dt" id="rf-start" value="${escapeHtml(f.start)}" />
@@ -295,6 +289,8 @@ async function openReport() {
 function bindReportToolbar() {
   const back = document.getElementById('btn-back');
   if (back) back.onclick = () => { state.report = false; renderApp(); loadData(); loadUsers(); };
+  const settle = document.getElementById('rf-settle');
+  if (settle) settle.onclick = openSettlement;
   const go = document.getElementById('rf-go');
   if (go) go.onclick = async () => {
     state.reportFilters.owner = document.getElementById('rf-owner').value.trim();
@@ -363,6 +359,32 @@ function renderReport(data) {
       </table>
     </div>
   </div>`;
+}
+
+/* ---------- 设置（汇总 日志 / 用户管理 入口） ---------- */
+function openSettings() {
+  $modal.innerHTML = `
+  <div class="modal-mask" data-close="1">
+    <div class="modal" onclick="event.stopPropagation()">
+      <h3>设置</h3>
+      <div class="settings-menu">
+        <button class="settings-item" id="set-logs">
+          <span class="si-ico">📋</span>
+          <span class="si-text"><b>操作日志</b><small>查看全部操作留痕</small></span>
+        </button>
+        <button class="settings-item" id="set-users">
+          <span class="si-ico">👥</span>
+          <span class="si-text"><b>用户管理</b><small>账号、角色与密码</small></span>
+        </button>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" data-close="1">关闭</button>
+      </div>
+    </div>
+  </div>`;
+  document.getElementById('set-logs').onclick = () => { closeModal(); openLogs(); };
+  document.getElementById('set-users').onclick = () => { closeModal(); openUserModal(); };
+  bindClose();
 }
 
 /* ---------- 操作日志 ---------- */
@@ -598,6 +620,7 @@ function bindListEvents() {
 
 /* ---------- 佣金结算模块 ---------- */
 async function openSettlement() {
+  state.report = false; state.logs = false;
   state.scope = 'sold';
   state.q = '';
   state.settlement = true;
