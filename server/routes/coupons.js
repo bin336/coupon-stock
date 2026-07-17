@@ -26,6 +26,19 @@ function todayLocal() {
   const off = d.getTimezoneOffset();
   return new Date(d.getTime() - off * 60000).toISOString().slice(0, 10);
 }
+// 本地时间字符串（YYYY-MM-DD HH:MM:SS），与前端一致，避免 UTC 偏移
+function nowLocal() {
+  const d = new Date();
+  const off = d.getTimezoneOffset();
+  return new Date(d.getTime() - off * 60000).toISOString().slice(0, 19).replace('T', ' ');
+}
+function logOp(req, action, target, detail) {
+  db.logOperation({
+    user_id: req.user ? req.user.id : null,
+    username: req.user ? req.user.username : '',
+    action, target, detail
+  });
+}
 
 // 列表 / 筛选 / 搜索
 router.get('/', authMiddleware, (req, res) => {
@@ -110,6 +123,86 @@ router.get('/recent-searches', authMiddleware, (req, res) => {
   res.json({ terms: rows.map(r => r.term) });
 });
 
+// 售出 / 利润报表：按「所有人」分组，支持时间段（sold_at）与所有人筛选。仅管理员。
+router.get('/report', authMiddleware, adminOnly, (req, res) => {
+  const { owner, start, end } = req.query;
+  const params = [];
+  let sql = "SELECT * FROM coupons WHERE status = 'sold'";
+  if (start) { sql += ' AND sold_at >= ?'; params.push(start + ' 00:00:00'); }
+  if (end) { sql += ' AND sold_at <= ?'; params.push(end + ' 23:59:59'); }
+  if (owner) { sql += ' AND owner_name LIKE ?'; params.push('%' + owner + '%'); }
+  const rows = db.prepare(sql).all(...params);
+
+  const byOwner = {};
+  const blank = () => ({
+    owner: '', qty: 0, face_value: 0, cost: 0,
+    settled_count: 0, unsettled_count: 0,
+    settled_amount: 0, settled_profit: 0,
+    pending_amount: 0, pending_profit: 0, total_profit: 0
+  });
+  rows.forEach(c => {
+    const k = c.owner_name || '未指定';
+    const g = byOwner[k] = byOwner[k] || blank();
+    g.owner = k;
+    const amt = (c.amount || 0) * (c.quantity || 1);
+    const cost = (c.cost || 0);
+    g.qty += (c.quantity || 1);
+    g.face_value += amt;
+    g.cost += cost;
+    if (c.settled) {
+      g.settled_count += 1;
+      const sa = (c.settle_amount != null ? c.settle_amount : 0);
+      g.settled_amount += sa;
+      g.settled_profit += (sa - cost);
+      g.total_profit += (sa - cost);
+    } else {
+      g.unsettled_count += 1;
+      g.pending_amount += amt;
+      g.pending_profit += (amt - cost);
+      g.total_profit += (amt - cost);
+    }
+  });
+
+  const r = n => Math.round(n * 100) / 100;
+  const clean = g => ({
+    owner: g.owner, qty: g.qty, face_value: r(g.face_value), cost: r(g.cost),
+    settled_count: g.settled_count, unsettled_count: g.unsettled_count,
+    settled_amount: r(g.settled_amount), settled_profit: r(g.settled_profit),
+    pending_amount: r(g.pending_amount), pending_profit: r(g.pending_profit),
+    total_profit: r(g.total_profit)
+  });
+  const result = Object.keys(byOwner).map(k => byOwner[k]).map(clean);
+  const totals = result.reduce((t, g) => {
+    t.qty += g.qty; t.face_value += g.face_value; t.cost += g.cost;
+    t.settled_count += g.settled_count; t.unsettled_count += g.unsettled_count;
+    t.settled_amount += g.settled_amount; t.settled_profit += g.settled_profit;
+    t.pending_amount += g.pending_amount; t.pending_profit += g.pending_profit;
+    t.total_profit += g.total_profit;
+    return t;
+  }, { qty:0, face_value:0, cost:0, settled_count:0, unsettled_count:0, settled_amount:0, settled_profit:0, pending_amount:0, pending_profit:0, total_profit:0 });
+
+  res.json({
+    rows: result,
+    totals: clean(totals),
+    filters: { owner: owner || '', start: start || '', end: end || '' }
+  });
+});
+
+// 操作日志（审计留痕）：支持 action / 操作人 / 关键词 / 时间段筛选。仅管理员。
+router.get('/logs', authMiddleware, adminOnly, (req, res) => {
+  const { action, user, q, start, end, limit } = req.query;
+  const params = [];
+  let sql = 'SELECT * FROM operation_log WHERE 1=1';
+  if (action) { sql += ' AND action = ?'; params.push(action); }
+  if (user) { sql += ' AND username LIKE ?'; params.push('%' + user + '%'); }
+  if (q) { sql += ' AND (target LIKE ? OR detail LIKE ?)'; params.push('%' + q + '%', '%' + q + '%'); }
+  if (start) { sql += ' AND created_at >= ?'; params.push(start + ' 00:00:00'); }
+  if (end) { sql += ' AND created_at <= ?'; params.push(end + ' 23:59:59'); }
+  sql += ' ORDER BY id DESC LIMIT ' + (parseInt(limit) || 200);
+  const rows = db.prepare(sql).all(...params);
+  res.json({ logs: rows });
+});
+
 // 新增
 router.post('/', authMiddleware, upload.single('image'), (req, res) => {
   const b = req.body || {};
@@ -129,6 +222,7 @@ router.post('/', authMiddleware, upload.single('image'), (req, res) => {
     VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
     .run(merchant, amount, coupon_code, quantity, expiry_date, cost, owner_name, req.user.id, image_filename, note, req.user.id);
   const row = db.prepare('SELECT * FROM coupons WHERE id = ?').get(info.lastInsertRowid);
+  logOp(req, 'add_coupon', merchant, `面值¥${amount} ×${quantity}张 成本¥${cost} 所有人:${owner_name}`);
   res.json({ coupon: row });
 });
 
@@ -168,6 +262,7 @@ router.post('/batch', authMiddleware, uploadArray, (req, res) => {
     });
   });
   try { tx(); } catch (e) { return res.status(500).json({ error: '批量入库失败：' + e.message }); }
+  if (created.length) logOp(req, 'batch_add', `${created.length}张`, `批量入库 ${created.length} 张`);
   res.json({ count: created.length, created, errors });
 });
 
@@ -203,6 +298,7 @@ router.put('/:id', authMiddleware, upload.single('image'), (req, res) => {
     WHERE id=?`)
     .run(merchant, amount, coupon_code, quantity, expiry_date, cost, owner_name, note, image_filename, row.id);
   const updated = db.prepare('SELECT * FROM coupons WHERE id = ?').get(row.id);
+  logOp(req, 'edit_coupon', merchant, `编辑券 #${row.id}`);
   res.json({ coupon: updated });
 });
 
@@ -218,6 +314,7 @@ router.delete('/:id', authMiddleware, (req, res) => {
     try { fs.unlinkSync(path.join(UPLOAD_DIR, row.image_filename)); } catch (e) {}
   }
   db.prepare('DELETE FROM coupons WHERE id = ?').run(req.params.id);
+  logOp(req, 'delete_coupon', row.merchant, `删除券 #${row.id}`);
   res.json({ ok: true });
 });
 
@@ -226,7 +323,13 @@ router.post('/:id/sold', authMiddleware, adminOnly, (req, res) => {
   const row = db.prepare('SELECT * FROM coupons WHERE id = ?').get(req.params.id);
   if (!row) return res.status(404).json({ error: '未找到该券' });
   const newStatus = row.status === 'sold' ? 'unsold' : 'sold';
-  db.prepare("UPDATE coupons SET status = ?, settled = 0, updated_at = datetime('now') WHERE id = ?").run(newStatus, row.id);
+  if (newStatus === 'sold') {
+    db.prepare("UPDATE coupons SET status = 'sold', settled = 0, sold_at = ?, updated_at = datetime('now') WHERE id = ?").run(nowLocal(), row.id);
+    logOp(req, 'mark_sold', row.merchant, `标记售出 #${row.id}`);
+  } else {
+    db.prepare("UPDATE coupons SET status = 'unsold', settled = 0, settle_amount = NULL, sold_at = NULL, updated_at = datetime('now') WHERE id = ?").run(row.id);
+    logOp(req, 'unmark_sold', row.merchant, `取消售出 #${row.id}`);
+  }
   res.json({ ok: true, status: newStatus });
 });
 
@@ -238,12 +341,14 @@ router.post('/:id/settle', authMiddleware, adminOnly, (req, res) => {
   if (row.settled) {
     // 取消结算：清空结算金额
     db.prepare("UPDATE coupons SET settled = 0, settle_amount = NULL, updated_at = datetime('now') WHERE id = ?").run(row.id);
+    logOp(req, 'unsettle', row.merchant, `取消结算 #${row.id}`);
     return res.json({ ok: true, settled: false });
   }
   // 标记结算：需录入结算金额（佣金 = 结算金额 − 成本）
   const amt = parseFloat(req.body && req.body.settle_amount);
   if (!(amt >= 0)) return res.status(400).json({ error: '请输入结算金额' });
   db.prepare("UPDATE coupons SET settled = 1, settle_amount = ?, updated_at = datetime('now') WHERE id = ?").run(amt, row.id);
+  logOp(req, 'settle', row.merchant, `结算金额¥${amt} #${row.id}`);
   res.json({ ok: true, settled: true, settle_amount: amt });
 });
 

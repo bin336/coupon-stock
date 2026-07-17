@@ -8,10 +8,14 @@ const state = {
   user: JSON.parse(localStorage.getItem('cs_user') || 'null'),
   scope: 'default',   // default | all | sold | expired
   settlement: false,  // 是否处于佣金结算模块视图
+  report: false,      // 是否处于售出/利润报表视图
+  logs: false,        // 是否处于操作日志视图
   q: '',
   coupons: [],
   stats: {},
-  users: []
+  users: [],
+  reportFilters: { owner: '', start: '', end: '' },
+  logFilters: { action: '', user: '', q: '', start: '', end: '' }
 };
 
 /* ---------- 工具 ---------- */
@@ -135,8 +139,9 @@ async function loadUsers() {
 function render() {
   if (!state.token || !state.user) { renderLogin(); return; }
   renderApp();
-  loadData();
-  loadUsers();
+  if (state.report) { loadReport(); }
+  else if (state.logs) { loadLogs(); }
+  else { loadData(); loadUsers(); }
 }
 
 function renderApp() {
@@ -148,6 +153,8 @@ function renderApp() {
         <div class="avatar">${escapeHtml((state.user.display_name || '?').slice(0,1))}</div>
         <span>${escapeHtml(state.user.display_name)}</span>
         <button class="icon" id="btn-batch">批量</button>
+        <button class="icon" id="btn-report" style="display:${state.user.role==='admin'?'inline-block':'none'}">报表</button>
+        <button class="icon" id="btn-logs" style="display:${state.user.role==='admin'?'inline-block':'none'}">日志</button>
         <button class="icon" id="btn-users" style="display:${state.user.role==='admin'?'inline-block':'none'}">用户</button>
         <button class="icon" id="btn-logout">退出</button>
       </div>
@@ -176,29 +183,23 @@ function renderApp() {
     </div>
   </div>
 
-  ${state.settlement ? `
-  <div class="toolbar" style="display:flex;align-items:center;gap:10px">
-    <button class="btn ghost" id="btn-back">← 返回</button>
-    <div style="font-weight:600;font-size:15px">佣金结算 · 按所有人汇总</div>
-  </div>` : `
-  <div class="toolbar">
-    <input class="search" id="search" placeholder="搜商家 / 券号 / 所有人" value="${escapeHtml(state.q)}" />
-    <div class="recent" id="recent-searches"></div>
-    <div class="chips" id="chips">
-      <div class="chip ${state.scope==='default'?'active':''}" data-scope="default">未售·未过期</div>
-      <div class="chip ${state.scope==='all'?'active':''}" data-scope="all">全部</div>
-      <div class="chip ${state.scope==='sold'?'active':''}" data-scope="sold">已售</div>
-      <div class="chip ${state.scope==='expired'?'active':''}" data-scope="expired">已过期</div>
-    </div>
-  </div>`}
+  ${getToolbar()}
 
   <div class="list" id="list"></div>
 
-  <button class="fab" id="fab">+</button>`;
+  ${state.report || state.logs ? '' : '<button class="fab" id="fab">+</button>'}`;
 
   document.getElementById('btn-logout').onclick = logout;
   const bu = document.getElementById('btn-users');
   if (bu) bu.onclick = openUserModal;
+  const br = document.getElementById('btn-report');
+  if (br) br.onclick = openReport;
+  const bl = document.getElementById('btn-logs');
+  if (bl) bl.onclick = openLogs;
+
+  // 报表 / 日志 视图：工具栏与列表独立渲染，不再绑定默认搜索/筛选
+  if (state.report) { bindReportToolbar(); loadReport(); return; }
+  if (state.logs) { bindLogToolbar(); loadLogs(); return; }
 
   const search = document.getElementById('search');
   let st;
@@ -235,6 +236,194 @@ function renderApp() {
 
   renderList();
   renderRecentSearches();
+}
+
+/* ---------- 工具栏（按当前视图切换） ---------- */
+function getToolbar() {
+  if (state.settlement) {
+    return `<div class="toolbar" style="display:flex;align-items:center;gap:10px">
+      <button class="btn ghost" id="btn-back">← 返回</button>
+      <div style="font-weight:600;font-size:15px">佣金结算 · 按所有人汇总</div>
+    </div>`;
+  }
+  if (state.report) {
+    const f = state.reportFilters;
+    return `<div class="toolbar report-toolbar">
+      <button class="btn ghost" id="btn-back">← 返回</button>
+      <input class="search" id="rf-owner" placeholder="所有人（留空=全部）" value="${escapeHtml(f.owner)}" />
+      <div class="dt-group">
+        <input type="date" class="dt" id="rf-start" value="${escapeHtml(f.start)}" />
+        <span class="dt-sep">至</span>
+        <input type="date" class="dt" id="rf-end" value="${escapeHtml(f.end)}" />
+      </div>
+      <button class="btn primary" id="rf-go">查询</button>
+    </div>`;
+  }
+  if (state.logs) {
+    const f = state.logFilters;
+    const actions = [['','全部'],['login','登录'],['add_coupon','新增券'],['batch_add','批量入库'],['edit_coupon','编辑券'],['delete_coupon','删除券'],['mark_sold','标记售出'],['unmark_sold','取消售出'],['settle','标记结算'],['unsettle','取消结算'],['add_user','新增用户'],['delete_user','删除用户'],['reset_password','修改密码']];
+    return `<div class="toolbar log-toolbar">
+      <button class="btn ghost" id="btn-back">← 返回</button>
+      <select class="search" id="lf-action">${actions.map(a=>`<option value="${a[0]}" ${f.action===a[0]?'selected':''}>${a[1]}</option>`).join('')}</select>
+      <input class="search" id="lf-user" placeholder="操作人" value="${escapeHtml(f.user)}" />
+      <input class="search" id="lf-q" placeholder="关键词" value="${escapeHtml(f.q)}" />
+      <div class="dt-group">
+        <input type="date" class="dt" id="lf-start" value="${escapeHtml(f.start)}" />
+        <span class="dt-sep">至</span>
+        <input type="date" class="dt" id="lf-end" value="${escapeHtml(f.end)}" />
+      </div>
+      <button class="btn primary" id="lf-go">查询</button>
+    </div>`;
+  }
+  return `<div class="toolbar">
+    <input class="search" id="search" placeholder="搜商家 / 券号 / 所有人" value="${escapeHtml(state.q)}" />
+    <div class="recent" id="recent-searches"></div>
+    <div class="chips" id="chips">
+      <div class="chip ${state.scope==='default'?'active':''}" data-scope="default">未售·未过期</div>
+      <div class="chip ${state.scope==='all'?'active':''}" data-scope="all">全部</div>
+      <div class="chip ${state.scope==='sold'?'active':''}" data-scope="sold">已售</div>
+      <div class="chip ${state.scope==='expired'?'active':''}" data-scope="expired">已过期</div>
+    </div>
+  </div>`;
+}
+
+/* ---------- 售出 / 利润报表 ---------- */
+async function openReport() {
+  state.report = true; state.logs = false; state.settlement = false; state.scope = 'default';
+  renderApp(); await loadReport();
+}
+function bindReportToolbar() {
+  const back = document.getElementById('btn-back');
+  if (back) back.onclick = () => { state.report = false; renderApp(); loadData(); loadUsers(); };
+  const go = document.getElementById('rf-go');
+  if (go) go.onclick = async () => {
+    state.reportFilters.owner = document.getElementById('rf-owner').value.trim();
+    state.reportFilters.start = document.getElementById('rf-start').value;
+    state.reportFilters.end = document.getElementById('rf-end').value;
+    await loadReport();
+  };
+}
+async function loadReport() {
+  const f = state.reportFilters;
+  const p = new URLSearchParams();
+  if (f.owner) p.set('owner', f.owner);
+  if (f.start) p.set('start', f.start);
+  if (f.end) p.set('end', f.end);
+  try {
+    const data = await api('GET', '/coupons/report?' + p.toString());
+    renderReport(data);
+  } catch (e) { toast(e.message); }
+}
+function renderReport(data) {
+  const list = document.getElementById('list');
+  if (!list) return;
+  const rows = data.rows || [];
+  const t = data.totals || {};
+  if (!rows.length) { list.innerHTML = `<div class="empty">没有符合条件的已售记录</div>`; return; }
+  const rHtml = r => `<tr>
+    <td>${escapeHtml(r.owner)}</td>
+    <td>${r.qty}</td>
+    <td>${fmtMoney(r.face_value)}</td>
+    <td>${fmtMoney(r.cost)}</td>
+    <td class="sm">${r.settled_count}<br/><small>${fmtMoney(r.settled_amount)}</small></td>
+    <td class="${r.settled_profit>=0?'pos':'neg'}">${fmtMoney(r.settled_profit)}</td>
+    <td class="sm">${r.unsettled_count}<br/><small>${fmtMoney(r.pending_amount)}</small></td>
+    <td class="${r.pending_profit>=0?'pos':'neg'}">${fmtMoney(r.pending_profit)}</td>
+    <td class="strong ${r.total_profit>=0?'pos':'neg'}">${fmtMoney(r.total_profit)}</td>
+  </tr>`;
+  list.innerHTML = `
+  <div class="report-wrap">
+    <div class="report-summary">
+      <div><span>总售出</span><b>${t.qty||0} 张</b></div>
+      <div><span>已结算佣金</span><b class="pos">${fmtMoney(t.settled_profit)}</b></div>
+      <div><span>待结算佣金</span><b class="pos">${fmtMoney(t.pending_profit)}</b></div>
+      <div><span>佣金合计</span><b class="pos">${fmtMoney(t.total_profit)}</b></div>
+    </div>
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead><tr>
+          <th>所有人</th><th>售出(张)</th><th>面值合计</th><th>成本合计</th>
+          <th>已结算<br/>(张/金额)</th><th>已结算佣金</th>
+          <th>待结算<br/>(张/金额)</th><th>待结算佣金</th><th>佣金合计</th>
+        </tr></thead>
+        <tbody>
+          ${rows.map(rHtml).join('')}
+          <tr class="total-row">
+            <td>合计</td>
+            <td>${t.qty||0}</td>
+            <td>${fmtMoney(t.face_value)}</td>
+            <td>${fmtMoney(t.cost)}</td>
+            <td class="sm">${t.settled_count||0}<br/><small>${fmtMoney(t.settled_amount)}</small></td>
+            <td class="pos">${fmtMoney(t.settled_profit)}</td>
+            <td class="sm">${t.unsettled_count||0}<br/><small>${fmtMoney(t.pending_amount)}</small></td>
+            <td class="pos">${fmtMoney(t.pending_profit)}</td>
+            <td class="strong pos">${fmtMoney(t.total_profit)}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+/* ---------- 操作日志 ---------- */
+async function openLogs() {
+  state.logs = true; state.report = false; state.settlement = false;
+  renderApp(); await loadLogs();
+}
+function bindLogToolbar() {
+  const back = document.getElementById('btn-back');
+  if (back) back.onclick = () => { state.logs = false; renderApp(); loadData(); loadUsers(); };
+  const go = document.getElementById('lf-go');
+  if (go) go.onclick = async () => {
+    state.logFilters.action = document.getElementById('lf-action').value;
+    state.logFilters.user = document.getElementById('lf-user').value.trim();
+    state.logFilters.q = document.getElementById('lf-q').value.trim();
+    state.logFilters.start = document.getElementById('lf-start').value;
+    state.logFilters.end = document.getElementById('lf-end').value;
+    await loadLogs();
+  };
+}
+async function loadLogs() {
+  const f = state.logFilters;
+  const p = new URLSearchParams();
+  if (f.action) p.set('action', f.action);
+  if (f.user) p.set('user', f.user);
+  if (f.q) p.set('q', f.q);
+  if (f.start) p.set('start', f.start);
+  if (f.end) p.set('end', f.end);
+  try {
+    const data = await api('GET', '/coupons/logs?' + p.toString());
+    renderLogs(data);
+  } catch (e) { toast(e.message); }
+}
+const ACTION_LABELS = {
+  login:'登录', add_coupon:'新增券', batch_add:'批量入库', edit_coupon:'编辑券',
+  delete_coupon:'删除券', mark_sold:'标记售出', unmark_sold:'取消售出',
+  settle:'标记结算', unsettle:'取消结算', add_user:'新增用户',
+  delete_user:'删除用户', reset_password:'修改密码'
+};
+function renderLogs(data) {
+  const list = document.getElementById('list');
+  if (!list) return;
+  const logs = data.logs || [];
+  if (!logs.length) { list.innerHTML = `<div class="empty">暂无操作记录</div>`; return; }
+  list.innerHTML = `
+  <div class="report-wrap">
+    <div class="table-scroll">
+      <table class="data-table log-table">
+        <thead><tr><th>时间</th><th>操作人</th><th>操作</th><th>对象</th><th>详情</th></tr></thead>
+        <tbody>
+          ${logs.map(l => `<tr>
+            <td class="nowrap">${escapeHtml(l.created_at)}</td>
+            <td>${escapeHtml(l.username || '—')}</td>
+            <td><span class="tag tag-${escapeHtml(l.action)}">${ACTION_LABELS[l.action]||l.action}</span></td>
+            <td>${escapeHtml(l.target || '—')}</td>
+            <td>${escapeHtml(l.detail || '—')}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
 }
 
 /* ---------- 近期搜索（服务端共享：所有用户搜索频次最高的词，点击即搜） ---------- */

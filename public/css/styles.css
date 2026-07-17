@@ -236,3 +236,52 @@ body {
 .batch-row .br-status.warn { color: var(--warn); }
 .batch-row .br-del { border: none; background: #fff0ee; color: var(--warn); border-radius: 8px; width: 28px; height: 28px; font-size: 14px; cursor: pointer; flex: 0 0 auto; }
 .ocr-rawhint { font-size: 11px; color: var(--muted); margin-top: 4px; word-break: break-all; background: #faf7f4; border-radius: 6px; padding: 4px 6px; }
+
+/* ---------- 报表 / 日志 工具栏 ---------- */
+.report-toolbar, .log-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.report-toolbar .search, .log-toolbar .search { flex: 1 1 140px; width: auto; }
+.dt-group { display: flex; align-items: center; gap: 6px; }
+.dt-group .dt { border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; font-size: 14px; background: #fff; outline: none; color: var(--text); }
+.dt-group .dt:focus { border-color: var(--accent); }
+.dt-sep { color: var(--muted); font-size: 13px; }
+
+/* ---------- 报表 / 日志 表格 ---------- */
+.report-wrap { padding: 10px 12px 4px; }
+.report-summary {
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 12px;
+}
+.report-summary > div {
+  background: var(--card); border-radius: 12px; padding: 10px 12px; box-shadow: var(--shadow);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.report-summary span { color: var(--muted); font-size: 12px; }
+.report-summary b { font-size: 17px; font-weight: 800; }
+.report-summary b.pos { color: var(--ok); }
+.table-scroll { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 12px; }
+.data-table {
+  width: 100%; border-collapse: collapse; background: var(--card); border-radius: 12px;
+  overflow: hidden; font-size: 13px; min-width: 640px; box-shadow: var(--shadow);
+}
+.data-table th, .data-table td { padding: 9px 10px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.data-table th { background: #fff4ee; color: #b3491c; font-weight: 700; font-size: 12px; }
+.data-table tbody tr:last-child td { border-bottom: none; }
+.data-table .sm { line-height: 1.4; }
+.data-table .sm small { color: var(--muted); font-weight: 400; }
+.data-table .pos { color: var(--ok); font-weight: 700; }
+.data-table .neg { color: var(--warn); font-weight: 700; }
+.data-table .strong { font-weight: 800; }
+.data-table .nowrap { white-space: nowrap; color: var(--muted); font-size: 12px; }
+.data-table .total-row td { background: #fff8f3; font-weight: 700; }
+.log-table { min-width: 540px; }
+.log-table .tag {
+  display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  background: #eef1f5; color: #5b6472;
+}
+.log-table .tag-login { background: #eaf2ff; color: #2b6cb0; }
+.log-table .tag-add_coupon, .log-table .tag-batch_add { background: #eaf7f0; color: var(--ok); }
+.log-table .tag-edit_coupon { background: #fff7ed; color: #b45309; }
+.log-table .tag-delete_coupon { background: #fff0ee; color: var(--warn); }
+.log-table .tag-mark_sold, .log-table .tag-settle { background: #eaf7f0; color: var(--ok); }
+.log-table .tag-unmark_sold, .log-table .tag-unsettle { background: #f3f4f7; color: #6b7280; }
+.log-table .tag-add_user, .log-table .tag-delete_user { background: #f3e8ff; color: #7c3aed; }
+.log-table .tag-reset_password { background: #fff7ed; color: #b45309; }

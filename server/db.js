@@ -56,7 +56,20 @@ function transaction(fn) {
   };
 }
 
+// 写一条操作日志（审计留痕）。失败仅记录、不影响主流程。
+function logOperation({ user_id, username, action, target, detail }) {
+  if (!_db) return;
+  try {
+    const d = new Date();
+    const off = d.getTimezoneOffset();
+    const ts = new Date(d.getTime() - off * 60000).toISOString().slice(0, 19).replace('T', ' ');
+    prepare("INSERT INTO operation_log (user_id, username, action, target, detail, created_at) VALUES (?,?,?,?,?,?)")
+      .run(user_id != null ? user_id : null, username || '', action, target || '', detail || '', ts);
+  } catch (e) { console.error('[logOperation]', e.message); }
+}
+
 module.exports = {
+  logOperation,
   init: async function() {
     const SQL = await initSqlJs();
     let buf;
@@ -98,6 +111,16 @@ CREATE TABLE IF NOT EXISTS search_log (
   user_id INTEGER,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS operation_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER,
+  username TEXT,
+  action TEXT NOT NULL,
+  target TEXT,
+  detail TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 `);
 
     // 字段迁移：已售券的「结算」子状态（0=未结算 默认，1=已结算）
@@ -109,6 +132,9 @@ CREATE TABLE IF NOT EXISTS search_log (
       }
       if (!cols.includes('settle_amount')) {
         _db.exec("ALTER TABLE coupons ADD COLUMN settle_amount REAL");
+      }
+      if (!cols.includes('sold_at')) {
+        _db.exec("ALTER TABLE coupons ADD COLUMN sold_at TEXT");
       }
     } catch (e) { console.error('[migrate]', e.message); }
 
