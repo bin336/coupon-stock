@@ -8,6 +8,7 @@ const state = {
   user: JSON.parse(localStorage.getItem('cs_user') || 'null'),
   scope: 'default',   // default | all | sold | expired
   settlement: false,  // 是否处于结算模块视图
+  settlementView: 'mine',  // mine(我的) | all(全部)
   report: false,      // 是否处于售出/利润报表视图
   logs: false,        // 是否处于操作日志视图
   q: '',
@@ -125,7 +126,7 @@ async function loadData() {
   state.stats = stats;
   renderStats();
   if (state.settlement) {
-    renderSettlement(state.coupons.filter(c => c.status === 'sold'));
+    renderSettlement(state.coupons.filter(c => c.status === 'sold' && !c.settled));
   } else {
     renderList();
   }
@@ -195,8 +196,7 @@ function renderApp() {
   if (state.report) { bindReportToolbar(); loadReport(); return; }
   if (state.logs) { bindLogToolbar(); loadLogs(); return; }
   if (state.settlement) {
-    const back = document.getElementById('btn-back');
-    if (back) back.onclick = () => { state.settlement = false; state.scope = 'default'; renderApp(); loadData(); };
+    bindSettlementToolbar();
     return;
   }
 
@@ -234,9 +234,13 @@ function renderApp() {
 /* ---------- 工具栏（按当前视图切换） ---------- */
 function getToolbar() {
   if (state.settlement) {
-    return `<div class="toolbar" style="display:flex;align-items:center;gap:10px">
+    const v = state.settlementView;
+    return `<div class="toolbar" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <button class="btn ghost" id="btn-back">← 返回</button>
-      <div style="font-weight:600;font-size:15px">结算 · 按所有人汇总</div>
+      <div class="seg">
+        <button class="btn ghost seg-btn ${v === 'mine' ? 'active' : ''}" id="sv-mine">我的</button>
+        <button class="btn ghost seg-btn ${v === 'all' ? 'active' : ''}" id="sv-all">全部</button>
+      </div>
     </div>`;
   }
   if (state.report) {
@@ -578,8 +582,16 @@ function bindListEvents() {
       const id = btn.dataset.id;
       const act = btn.dataset.act;
       if (act === 'toggle') {
-        try { await api('POST', '/coupons/' + id + '/sold'); toast('已更新'); loadData(); }
-        catch (e) { toast(e.message); }
+        const c = state.coupons.find(x => x.id == id);
+        if (!c) return;
+        if (c.status === 'sold') {
+          // 取消售出：直接调用
+          try { await api('POST', '/coupons/' + id + '/sold'); toast('已取消售出'); loadData(); }
+          catch (e) { toast(e.message); }
+        } else {
+          // 标记售出：弹框填售出价
+          openSoldModal(c);
+        }
       } else if (act === 'settle') {
         const c = state.coupons.find(x => x.id == id);
         if (!c) return;
@@ -619,44 +631,117 @@ async function openSettlement() {
   state.scope = 'sold';
   state.q = '';
   state.settlement = true;
+  state.settlementView = 'mine';
   renderApp();
   loadData();
 }
+function bindSettlementToolbar() {
+  const back = document.getElementById('btn-back');
+  if (back) back.onclick = () => { state.settlement = false; state.scope = 'default'; renderApp(); loadData(); };
+  const mine = document.getElementById('sv-mine');
+  const all = document.getElementById('sv-all');
+  if (mine) mine.onclick = () => { state.settlementView = 'mine'; renderApp(); loadData(); };
+  if (all) all.onclick = () => { state.settlementView = 'all'; renderApp(); loadData(); };
+}
+// 单张券的结算明细行（显示商家/券号/方向/金额，可点「结算」）
+function settleItemLine(c) {
+  const amt = fmtMoney(parseFloat(c.settle_amount) || 0);
+  const code = c.coupon_code ? ` · ${escapeHtml(c.coupon_code)}` : '';
+  const dir = (c.sold_by_name ? `销售人 ${escapeHtml(c.sold_by_name)} → 所有人 ${escapeHtml(c.owner_name)}` : `所有人 ${escapeHtml(c.owner_name)}`);
+  return `<div class="settle-item">
+    <div class="si-main"><b>${escapeHtml(c.merchant)}</b>${code}</div>
+    <div class="si-sub">${dir}</div>
+    <div class="si-right">
+      <div class="si-amt">${amt}</div>
+      ${state.user && state.user.role === 'admin' ? `<button class="btn tiny" data-act="settle" data-id="${c.id}">结算</button>` : ''}
+    </div>
+  </div>`;
+}
+
+// 按某个字段分组渲染（key: 'owner_name' 收款方 / 'sold_by_name' 付款方）
+function settleGroupHtml(coupons, key, fallback) {
+  const groups = {};
+  coupons.forEach(c => {
+    const k = (c[key] || fallback) + '';
+    (groups[k] = groups[k] || []).push(c);
+  });
+  return Object.keys(groups).map(k => {
+    const cs = groups[k];
+    const total = cs.reduce((s, c) => s + (parseFloat(c.settle_amount) || 0), 0);
+    return `<div class="settle-group">
+      <div class="sg-head"><span class="sg-name">${escapeHtml(k)}</span><span class="sg-meta">${cs.length} 张 · 合计 ${fmtMoney(total)}</span></div>
+      <div class="sg-items">${cs.map(settleItemLine).join('')}</div>
+    </div>`;
+  }).join('');
+}
+
+// 视图A：我的（个性化双视角）
+function renderSettleMine(pending) {
+  const me = (state.user && (state.user.display_name || state.user.username)) || '';
+  const iSold = pending.filter(c => (c.sold_by_name || '') === me);
+  const iOwn = pending.filter(c => (c.owner_name || '') === me);
+  let html = '';
+  if (iSold.length) {
+    html += `<div class="settle-sec-title">我需结算给别人的 <span class="badge-pay">付</span></div>`;
+    html += `<div class="settle-sub">按收款方（所有人）分组</div>`;
+    html += settleGroupHtml(iSold, 'owner_name', '（未指定所有人）');
+  }
+  if (iOwn.length) {
+    html += `<div class="settle-sec-title">别人需结算给我的 <span class="badge-rec">收</span></div>`;
+    html += `<div class="settle-sub">按付款方（销售人）分组</div>`;
+    html += settleGroupHtml(iOwn, 'sold_by_name', '（未记录销售人）');
+  }
+  if (!iSold.length && !iOwn.length) {
+    html += `<div class="empty">当前账号（${escapeHtml(me)}）没有待结算记录</div>`;
+  }
+  return html;
+}
+
+// 视图B：全部（以人为标签，分别显示需结算金额 / 待别人结算金额）
+function renderSettleAll(pending) {
+  const persons = {};
+  const person = n => persons[n] = persons[n] || { pay: 0, payCount: 0, rec: 0, recCount: 0 };
+  pending.forEach(c => {
+    const seller = c.sold_by_name || '（未记录销售人）';
+    const owner = c.owner_name || '（未指定所有人）';
+    person(seller).pay += (parseFloat(c.settle_amount) || 0); person(seller).payCount++;
+    person(owner).rec += (parseFloat(c.settle_amount) || 0); person(owner).recCount++;
+  });
+  const names = Object.keys(persons);
+  if (!names.length) return `<div class="empty">没有待结算的券</div>`;
+  return names.map(name => {
+    const p = persons[name];
+    const rel = pending.filter(c => (c.sold_by_name || '（未记录销售人）') === name || (c.owner_name || '（未指定所有人）') === name);
+    return `<div class="person-card">
+      <div class="pc-name">${escapeHtml(name)}</div>
+      <div class="pc-rows">
+        <div class="pc-row pay"><span>需结算金额（他付）</span><b>${fmtMoney(p.pay)}</b><small>${p.payCount} 张</small></div>
+        <div class="pc-row rec"><span>待别人结算金额（收他）</span><b>${fmtMoney(p.rec)}</b><small>${p.recCount} 张</small></div>
+      </div>
+      <details class="pc-detail"><summary>明细（${rel.length} 张）</summary>
+        <div class="sg-items">${rel.map(settleItemLine).join('')}</div>
+      </details>
+    </div>`;
+  }).join('');
+}
+
 function renderSettlement(coupons) {
   const list = document.getElementById('list');
   if (!list) return;
-  const sold = coupons.filter(c => c.status === 'sold');
-  if (!sold.length) { list.innerHTML = `<div class="empty">还没有已售出的券</div>`; return; }
-  const byOwner = {};
-  sold.forEach(c => {
-    const k = (c.owner_name || '未指定') + '';
-    (byOwner[k] = byOwner[k] || []).push(c);
-  });
-  let html = '';
-  Object.keys(byOwner).forEach(owner => {
-    const cs = byOwner[owner];
-    const unsettled = cs.filter(c => !c.settled);
-    const settled = cs.filter(c => c.settled);
-    const pending = unsettled.reduce((s, c) => s + (c.amount || 0) * (c.quantity || 1), 0);
-    const done = settled.reduce((s, c) => s + ((c.settle_amount != null ? c.settle_amount : 0)), 0);
-    html += `<div class="group-head">
-      <span class="gh-title">${escapeHtml(owner)}</span>
-      <span class="gh-sub">待结算金额 ${fmtMoney(pending)} · 已结算金额 ${fmtMoney(done)} · 待 ${unsettled.length} 张</span>
-    </div>`;
-    html += unsettled.length ? unsettled.map(c => couponCard(c, true)).join('') : `<div class="empty small">该所有人暂无可结算券</div>`;
-    html += settled.length ? settled.map(c => couponCard(c, true)).join('') : '';
-  });
-  list.innerHTML = html;
+  const pending = coupons; // loadData 已过滤为 status='sold' && !settled
+  if (!pending.length) { list.innerHTML = `<div class="empty">🎉 当前没有待结算的券</div>`; return; }
+  list.innerHTML = (state.settlementView === 'all') ? renderSettleAll(pending) : renderSettleMine(pending);
   bindListEvents();
 }
-function openSettleModal(c) {
+// 标记售出：录入售出价（自动算结算金额 + 记录销售人）
+function openSoldModal(c) {
   $modal.innerHTML = `
   <div class="modal-mask" data-close="1">
     <div class="modal" onclick="event.stopPropagation()">
-      <h3>标记结算</h3>
+      <h3>标记售出</h3>
       <div class="field"><label>商家</label><div>${escapeHtml(c.merchant)}</div></div>
-      <div class="field"><label>成本</label><div>${fmtMoney(c.cost)}</div></div>
-      <form id="settle-form">
+      <div class="field"><label>所有人</label><div>${escapeHtml(c.owner_name)}</div></div>
+      <form id="sold-form">
         <div class="field">
           <label>售出价（手动输入）</label>
           <input name="sold_price" type="number" step="0.01" min="0" placeholder="实际卖出价" required />
@@ -665,12 +750,12 @@ function openSettleModal(c) {
         <div class="field"><label>结算金额（售出价 − 手续费）</label><div id="settle-preview">—</div></div>
         <div class="modal-actions">
           <button type="button" class="btn ghost" data-close="1">取消</button>
-          <button type="submit" class="btn primary">确认结算</button>
+          <button type="submit" class="btn primary">确认售出</button>
         </div>
       </form>
     </div>
   </div>`;
-  const f = document.getElementById('settle-form');
+  const f = document.getElementById('sold-form');
   const sp = f.sold_price;
   const feeEl = document.getElementById('fee-preview');
   const settleEl = document.getElementById('settle-preview');
@@ -687,10 +772,55 @@ function openSettleModal(c) {
     const v = parseFloat(sp.value);
     if (!(v >= 0)) { toast('请输入售出价'); return; }
     try {
-      const fee = Math.round(v * 0.016 * 100) / 100;
-      const net = Math.round((v - fee) * 100) / 100;
-      await api('POST', '/coupons/' + c.id + '/settle', { sold_price: v, settle_amount: net });
-      toast('已结算，结算金额 ' + fmtMoney(net));
+      await api('POST', '/coupons/' + c.id + '/sold', { sold_price: v });
+      toast('已标记售出');
+      closeModal();
+      loadData();
+    } catch (e2) { toast(e2.message); }
+  });
+  bindClose();
+}
+
+// 标记结算：确认已付款给所有人（售出价已在标记售出时录入）
+function openSettleModal(c) {
+  const sp = (c.sold_price != null) ? c.sold_price : '';
+  const hasPrice = c.sold_price != null;
+  const net = hasPrice ? Math.round((c.sold_price - c.sold_price * 0.016) * 100) / 100 : null;
+  $modal.innerHTML = `
+  <div class="modal-mask" data-close="1">
+    <div class="modal" onclick="event.stopPropagation()">
+      <h3>标记结算</h3>
+      <div class="field"><label>商家</label><div>${escapeHtml(c.merchant)}</div></div>
+      <div class="field"><label>所有人</label><div>${escapeHtml(c.owner_name)}</div></div>
+      <form id="settle-form">
+        ${hasPrice ? '' : `<div class="field">
+          <label>售出价（补填）</label>
+          <input name="sold_price" type="number" step="0.01" min="0" placeholder="实际卖出价" required />
+        </div>`}
+        <div class="field"><label>结算金额${hasPrice ? '（售出价 ' + fmtMoney(c.sold_price) + ' − 手续费 1.6%）' : '（补填售出价后计算）'}</label><div id="settle-preview">${hasPrice ? fmtMoney(net) : '—'}</div></div>
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" data-close="1">取消</button>
+          <button type="submit" class="btn primary">确认已结算</button>
+        </div>
+      </form>
+    </div>
+  </div>`;
+  const f = document.getElementById('settle-form');
+  if (!hasPrice) {
+    const spEl = f.sold_price;
+    const settleEl = document.getElementById('settle-preview');
+    spEl.addEventListener('input', () => {
+      const v = parseFloat(spEl.value);
+      settleEl.textContent = (!isNaN(v) && v >= 0) ? fmtMoney(Math.round((v - v * 0.016) * 100) / 100) : '—';
+    });
+  }
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const v = hasPrice ? c.sold_price : parseFloat(f.sold_price.value);
+    if (!(v >= 0)) { toast('请输入售出价'); return; }
+    try {
+      await api('POST', '/coupons/' + c.id + '/settle', hasPrice ? {} : { sold_price: v });
+      toast('已结算');
       closeModal();
       loadData();
     } catch (e2) { toast(e2.message); }

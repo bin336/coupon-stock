@@ -333,18 +333,26 @@ router.delete('/:id', authMiddleware, (req, res) => {
 });
 
 // 标记售出 / 取消售出（仅管理员）
+// 标记售出需录入「售出价」，系统按 售出价 − 平台手续费(售出价×1.6%) 计算结算金额，并记录销售人
 router.post('/:id/sold', authMiddleware, adminOnly, (req, res) => {
   const row = db.prepare('SELECT * FROM coupons WHERE id = ?').get(req.params.id);
   if (!row) return res.status(404).json({ error: '未找到该券' });
-  const newStatus = row.status === 'sold' ? 'unsold' : 'sold';
-  if (newStatus === 'sold') {
-    db.prepare("UPDATE coupons SET status = 'sold', settled = 0, sold_at = ?, updated_at = datetime('now') WHERE id = ?").run(nowLocal(), row.id);
-    logOp(req, 'mark_sold', row.merchant, `标记售出 #${row.id}`);
-  } else {
-    db.prepare("UPDATE coupons SET status = 'unsold', settled = 0, settle_amount = NULL, sold_at = NULL, updated_at = datetime('now') WHERE id = ?").run(row.id);
+  if (row.status === 'sold') {
+    // 取消售出：清空售出/结算/销售人相关字段
+    db.prepare("UPDATE coupons SET status = 'unsold', settled = 0, settle_amount = NULL, sold_price = NULL, sold_at = NULL, sold_by = NULL, sold_by_name = NULL, updated_at = datetime('now') WHERE id = ?").run(row.id);
     logOp(req, 'unmark_sold', row.merchant, `取消售出 #${row.id}`);
+    return res.json({ ok: true, status: 'unsold' });
   }
-  res.json({ ok: true, status: newStatus });
+  const sp = parseFloat(req.body && req.body.sold_price);
+  if (!(sp >= 0)) return res.status(400).json({ error: '请输入售出价' });
+  const fee = Math.round(sp * 0.016 * 100) / 100;
+  const amt = Math.round((sp - fee) * 100) / 100;
+  const uid = req.user ? req.user.id : null;
+  const uname = (req.user && (req.user.display_name || req.user.username)) || '';
+  db.prepare("UPDATE coupons SET status = 'sold', settled = 0, sold_price = ?, settle_amount = ?, sold_at = ?, sold_by = ?, sold_by_name = ?, updated_at = datetime('now') WHERE id = ?")
+    .run(sp, amt, nowLocal(), uid, uname, row.id);
+  logOp(req, 'mark_sold', row.merchant, `标记售出 售出价¥${sp} 手续费¥${fee} 结算金额¥${amt} 销售人:${uname} #${row.id}`);
+  res.json({ ok: true, status: 'sold', sold_price: sp, settle_amount: amt, sold_by: uid, sold_by_name: uname });
 });
 
 // 标记结算 / 取消结算（仅已售券可用，仅管理员）
@@ -353,18 +361,18 @@ router.post('/:id/settle', authMiddleware, adminOnly, (req, res) => {
   if (!row) return res.status(404).json({ error: '未找到该券' });
   if (row.status !== 'sold') return res.status(400).json({ error: '只有已售出的券才能标记结算' });
   if (row.settled) {
-    // 取消结算：清空售出价与结算金额
-    db.prepare("UPDATE coupons SET settled = 0, settle_amount = NULL, sold_price = NULL, updated_at = datetime('now') WHERE id = ?").run(row.id);
+    // 取消结算：仅翻转结算状态（售出价/结算金额保留，便于重新结算）
+    db.prepare("UPDATE coupons SET settled = 0, updated_at = datetime('now') WHERE id = ?").run(row.id);
     logOp(req, 'unsettle', row.merchant, `取消结算 #${row.id}`);
     return res.json({ ok: true, settled: false });
   }
-  // 标记结算：录入「售出价」，系统按 售出价 − 平台手续费(售出价×1.6%) 计算结算金额
-  const sp = parseFloat(req.body && req.body.sold_price);
-  if (!(sp >= 0)) return res.status(400).json({ error: '请输入售出价' });
+  // 标记结算（确认已付款给所有人）。售出价通常已在标记售出时录入；兼容历史数据可在此补填
+  const sp = row.sold_price != null ? row.sold_price : (parseFloat(req.body && req.body.sold_price));
+  if (!(sp >= 0)) return res.status(400).json({ error: '请先标记售出并填写售出价' });
   const fee = Math.round(sp * 0.016 * 100) / 100;
   const amt = Math.round((sp - fee) * 100) / 100;
   db.prepare("UPDATE coupons SET settled = 1, sold_price = ?, settle_amount = ?, updated_at = datetime('now') WHERE id = ?").run(sp, amt, row.id);
-  logOp(req, 'settle', row.merchant, `售出价¥${sp} 手续费¥${fee} 结算金额¥${amt} #${row.id}`);
+  logOp(req, 'settle', row.merchant, `结算金额¥${amt} #${row.id}`);
   res.json({ ok: true, settled: true, sold_price: sp, settle_amount: amt });
 });
 

@@ -258,6 +258,42 @@ body {
 .dt-group .dt:focus { border-color: var(--accent); }
 .dt-sep { color: var(--muted); font-size: 13px; }
 
+/* ---------- 结算分组（我的 / 全部） ---------- */
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.seg-btn { border: none; border-radius: 0; background: #fff; }
+.seg-btn.active { background: var(--accent); color: #fff; }
+.settle-sec-title { font-size: 15px; font-weight: 700; margin: 14px 12px 4px; display: flex; align-items: center; gap: 8px; }
+.settle-sub { font-size: 12px; color: var(--muted); margin: 0 12px 8px; }
+.badge-pay, .badge-rec { font-size: 11px; line-height: 1; padding: 3px 7px; border-radius: 6px; font-weight: 700; }
+.badge-pay { background: #fff0ee; color: var(--warn); }
+.badge-rec { background: #eaf7f0; color: var(--ok); }
+.settle-group { margin: 0 12px 12px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: var(--shadow); }
+.sg-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); background: #fff8f3; }
+.sg-name { font-weight: 700; font-size: 14px; }
+.sg-meta { font-size: 12px; color: var(--muted); }
+.sg-items { padding: 4px 0; }
+.settle-item { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid #f3eee9; }
+.settle-item:last-child { border-bottom: none; }
+.si-main { flex: 1 1 auto; min-width: 0; }
+.si-main b { font-size: 14px; }
+.si-sub { font-size: 11px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.si-right { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; }
+.si-amt { font-weight: 700; color: var(--accent); white-space: nowrap; }
+.btn.tiny { padding: 5px 10px; font-size: 12px; border-radius: 8px; }
+.person-card { margin: 0 12px 12px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: var(--shadow); }
+.pc-name { font-weight: 700; font-size: 15px; padding: 10px 12px; border-bottom: 1px solid var(--line); background: #fff8f3; }
+.pc-rows { display: flex; }
+.pc-row { flex: 1; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+.pc-row + .pc-row { border-left: 1px solid var(--line); }
+.pc-row span { font-size: 12px; color: var(--muted); }
+.pc-row b { font-size: 16px; }
+.pc-row.pay b { color: var(--warn); }
+.pc-row.rec b { color: var(--ok); }
+.pc-row small { font-size: 11px; color: var(--muted); }
+.pc-detail { border-top: 1px solid var(--line); }
+.pc-detail summary { cursor: pointer; padding: 8px 12px; font-size: 13px; color: var(--accent); user-select: none; }
+.pc-detail .sg-items { padding: 0 0 6px; }
+
 /* ---------- 报表 / 日志 表格 ---------- */
 .report-wrap { padding: 10px 12px 4px; }
 .report-summary {

@@ -146,6 +146,12 @@ CREATE TABLE IF NOT EXISTS operation_log (
       if (!cols.includes('sold_price')) {
         _db.exec("ALTER TABLE coupons ADD COLUMN sold_price REAL");
       }
+      if (!cols.includes('sold_by')) {
+        _db.exec("ALTER TABLE coupons ADD COLUMN sold_by INTEGER");
+      }
+      if (!cols.includes('sold_by_name')) {
+        _db.exec("ALTER TABLE coupons ADD COLUMN sold_by_name TEXT");
+      }
     } catch (e) { console.error('[migrate]', e.message); }
 
     // 首次启动创建管理员
