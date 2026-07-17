@@ -133,14 +133,49 @@ coupon-stock/
 
 ---
 
-## 十、以后更新代码
+## 十、日常更新代码（保数据，重点）
 
-功能还会迭代。更新步骤：
-1. 从预览地址下载最新的 `coupon-stock-backup.zip`
-2. 解压，**只把新文件覆盖**到 NAS 的 `coupon-stock` 文件夹（别动 `data/`）
-3. 容器套件里**重建 / 重启** coupon-stock 容器
+代码会持续迭代。更新时**唯一要守住的红线：别弄丢 `data/`**（你的券和截图都在里面）。
+下面这套流程"先备份数据 → 再换代码 → 最后恢复数据"，最稳，照做不会丢数据。
 
-> 注意：`data/` 千万不要覆盖，那是你的真实数据。
+### 第 1 步：停容器 + 备份数据（SSH）
+先连上 NAS 的 SSH，进到你的项目文件夹（路径以你实际为准）：
+- 威联通常见路径：`/share/CACHEDEV1_DATA/docker/coupon-stock-main`
+- 群晖常见路径：`/volume1/docker/coupon-stock`
+
+```bash
+cd /share/CACHEDEV1_DATA/docker/coupon-stock-main   # ← 换成你实际路径
+docker compose down
+cd /share/CACHEDEV1_DATA/docker
+cp -r coupon-stock-main/data coupon-stock-data-backup
+```
+
+### 第 2 步：换上新代码（File Station）
+1. 删除 NAS 上的 `coupon-stock-main` 文件夹（数据已备份，放心删）
+2. 电脑浏览器下载最新源码：
+   ```
+   https://github.com/bin336/coupon-stock/archive/refs/heads/main.zip
+   ```
+3. 把 zip 传到 NAS 的 `docker` 文件夹，解压 → 生成新的 `coupon-stock-main`
+   （新版 zip 里**不含 `data/`**，不会动你的数据；加上第 1 步已备份，双保险）
+
+### 第 3 步：恢复数据 + 重建（SSH）
+```bash
+cp -r coupon-stock-data-backup coupon-stock-main/data
+cd coupon-stock-main && docker compose up -d --build
+```
+
+> 因为 Node 镜像你第一次已经 `docker load` 到本地了，**这次 build 约 30 秒**，不用再下 222MB。
+> 看到容器状态 `Up` 即成功，浏览器刷新 `http://NAS的IP:3000` 就能用上新功能。
+
+### 常见坑
+| 现象 | 处理 |
+|------|------|
+| 担心数据丢了 | 第 1 步的 `cp -r .../data ...-backup` 就是保险；万一误删，把备份 `cp` 回去再重启容器即可 |
+| build 又去下 222MB | 本地 Node 镜像被清了（如重装过 Container Station）。重新按首次部署的"离线镜像"步骤 `docker load` 一次即可 |
+| 不想删整个文件夹 | 也可以直接把新 zip **解压覆盖**到原文件夹（File Station 选"合并/覆盖"），效果一样，但务必确认 `data/` 没被碰 |
+
+> 记住一句话：**更新动代码，不动 `data/`；动之前先备份。**
 
 ---
 
