@@ -153,7 +153,6 @@ function renderApp() {
       <div class="user">
         <div class="avatar">${escapeHtml((state.user.display_name || '?').slice(0,1))}</div>
         <span>${escapeHtml(state.user.display_name)}</span>
-        <button class="icon" id="btn-batch">批量</button>
         <button class="icon" id="btn-settings" style="display:${state.user.role==='admin'?'inline-block':'none'}">设置</button>
         <button class="icon" id="btn-logout">退出</button>
       </div>
@@ -186,7 +185,13 @@ function renderApp() {
 
   <div class="list" id="list"></div>
 
-  ${state.report || state.logs || state.settlement ? '' : '<button class="fab" id="fab">+</button>'}`;
+  ${state.report || state.logs || state.settlement ? '' : `
+  <div class="fab-backdrop" id="fab-backdrop" style="display:none"></div>
+  <div class="fab-menu" id="fab-menu" style="display:none">
+    <button class="fab-item" id="fab-batch">批量录入</button>
+    <button class="fab-item" id="fab-single">快速入库</button>
+  </div>
+  <button class="fab" id="fab">+</button>`}`;
 
   document.getElementById('btn-logout').onclick = logout;
   const bs = document.getElementById('btn-settings');
@@ -220,9 +225,29 @@ function renderApp() {
     loadData();
   });
 
-  document.getElementById('fab').onclick = () => openCouponModal();
-  const bb = document.getElementById('btn-batch');
-  if (bb) bb.onclick = openBatchModal;
+  const fab = document.getElementById('fab');
+  const fabMenu = document.getElementById('fab-menu');
+  const fabBack = document.getElementById('fab-backdrop');
+  function closeFab() {
+    if (fabMenu) fabMenu.style.display = 'none';
+    if (fabBack) fabBack.style.display = 'none';
+    if (fab) fab.classList.remove('open');
+  }
+  if (fab) {
+    fab.onclick = (e) => {
+      e.stopPropagation();
+      const open = fabMenu && fabMenu.style.display === 'flex';
+      if (open) { closeFab(); return; }
+      if (fabMenu) fabMenu.style.display = 'flex';
+      if (fabBack) fabBack.style.display = 'block';
+      fab.classList.add('open');
+    };
+    const fSingle = document.getElementById('fab-single');
+    const fBatch = document.getElementById('fab-batch');
+    if (fSingle) fSingle.onclick = () => { closeFab(); openCouponModal(); };
+    if (fBatch) fBatch.onclick = () => { closeFab(); openBatchModal(); };
+    if (fabBack) fabBack.onclick = closeFab;
+  }
 
   const statPending = document.getElementById('stat-pending');
   if (statPending) statPending.onclick = openReport;

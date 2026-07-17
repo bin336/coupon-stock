@@ -163,7 +163,22 @@ body {
   width: 58px; height: 58px; border-radius: 50%; border: none;
   background: var(--accent-grad); color: #fff; font-size: 30px; font-weight: 300;
   box-shadow: 0 8px 22px rgba(255,90,31,.45); cursor: pointer;
+  transition: transform .2s ease;
 }
+.fab.open { transform: rotate(45deg); }
+.fab-backdrop { position: fixed; inset: 0; z-index: 39; background: transparent; }
+.fab-menu {
+  position: fixed; right: 18px; bottom: 90px; z-index: 41;
+  display: none; flex-direction: column; gap: 10px; align-items: flex-end;
+}
+.fab-item {
+  background: #fff; color: var(--text); border: 1px solid var(--line);
+  border-radius: 24px; padding: 11px 20px; font-size: 15px; font-weight: 600;
+  box-shadow: 0 6px 18px rgba(20,20,40,.18); cursor: pointer; white-space: nowrap;
+  animation: pop .18s ease;
+}
+.fab-item:active { transform: scale(.96); }
+@keyframes pop { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
 
 /* ---------- Modal ---------- */
 .modal-mask {
