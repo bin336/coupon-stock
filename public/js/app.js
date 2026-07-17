@@ -7,7 +7,7 @@ const state = {
   token: localStorage.getItem('cs_token') || null,
   user: JSON.parse(localStorage.getItem('cs_user') || 'null'),
   scope: 'default',   // default | all | sold | expired
-  settlement: false,  // 是否处于佣金结算模块视图
+  settlement: false,  // 是否处于结算模块视图
   report: false,      // 是否处于售出/利润报表视图
   logs: false,        // 是否处于操作日志视图
   q: '',
@@ -236,14 +236,14 @@ function getToolbar() {
   if (state.settlement) {
     return `<div class="toolbar" style="display:flex;align-items:center;gap:10px">
       <button class="btn ghost" id="btn-back">← 返回</button>
-      <div style="font-weight:600;font-size:15px">佣金结算 · 按所有人汇总</div>
+      <div style="font-weight:600;font-size:15px">结算 · 按所有人汇总</div>
     </div>`;
   }
   if (state.report) {
     const f = state.reportFilters;
     return `<div class="toolbar report-toolbar">
       <button class="btn ghost" id="btn-back">← 返回</button>
-      <button class="btn ghost" id="rf-settle">佣金结算</button>
+      <button class="btn ghost" id="rf-settle">结算</button>
       <input class="search" id="rf-owner" placeholder="所有人（留空=全部）" value="${escapeHtml(f.owner)}" />
       <div class="dt-group">
         <input type="date" class="dt" id="rf-start" value="${escapeHtml(f.start)}" />
@@ -322,25 +322,22 @@ function renderReport(data) {
     <td>${fmtMoney(r.face_value)}</td>
     <td>${fmtMoney(r.cost)}</td>
     <td class="sm">${r.settled_count}<br/><small>${fmtMoney(r.settled_amount)}</small></td>
-    <td class="${r.settled_profit>=0?'pos':'neg'}">${fmtMoney(r.settled_profit)}</td>
     <td class="sm">${r.unsettled_count}<br/><small>${fmtMoney(r.pending_amount)}</small></td>
-    <td class="${r.pending_profit>=0?'pos':'neg'}">${fmtMoney(r.pending_profit)}</td>
-    <td class="strong ${r.total_profit>=0?'pos':'neg'}">${fmtMoney(r.total_profit)}</td>
+    <td class="strong">${fmtMoney(r.total_amount)}</td>
   </tr>`;
   list.innerHTML = `
   <div class="report-wrap">
     <div class="report-summary">
       <div><span>总售出</span><b>${t.qty||0} 张</b></div>
-      <div><span>已结算佣金</span><b class="pos">${fmtMoney(t.settled_profit)}</b></div>
-      <div><span>待结算佣金</span><b class="pos">${fmtMoney(t.pending_profit)}</b></div>
-      <div><span>佣金合计</span><b class="pos">${fmtMoney(t.total_profit)}</b></div>
+      <div><span>已结算金额</span><b class="pos">${fmtMoney(t.settled_amount)}</b></div>
+      <div><span>待结算金额</span><b class="pos">${fmtMoney(t.pending_amount)}</b></div>
+      <div><span>结算合计</span><b class="pos">${fmtMoney(t.total_amount)}</b></div>
     </div>
     <div class="table-scroll">
       <table class="data-table">
         <thead><tr>
           <th>所有人</th><th>售出(张)</th><th>面值合计</th><th>成本合计</th>
-          <th>已结算<br/>(张/金额)</th><th>已结算佣金</th>
-          <th>待结算<br/>(张/金额)</th><th>待结算佣金</th><th>佣金合计</th>
+          <th>已结算<br/>(张/金额)</th><th>待结算<br/>(张/金额)</th><th>结算合计</th>
         </tr></thead>
         <tbody>
           ${rows.map(rHtml).join('')}
@@ -350,10 +347,8 @@ function renderReport(data) {
             <td>${fmtMoney(t.face_value)}</td>
             <td>${fmtMoney(t.cost)}</td>
             <td class="sm">${t.settled_count||0}<br/><small>${fmtMoney(t.settled_amount)}</small></td>
-            <td class="pos">${fmtMoney(t.settled_profit)}</td>
             <td class="sm">${t.unsettled_count||0}<br/><small>${fmtMoney(t.pending_amount)}</small></td>
-            <td class="pos">${fmtMoney(t.pending_profit)}</td>
-            <td class="strong pos">${fmtMoney(t.total_profit)}</td>
+            <td class="strong pos">${fmtMoney(t.total_amount)}</td>
           </tr>
         </tbody>
       </table>
@@ -618,7 +613,7 @@ function bindListEvents() {
   });
 }
 
-/* ---------- 佣金结算模块 ---------- */
+/* ---------- 结算模块 ---------- */
 async function openSettlement() {
   state.report = false; state.logs = false;
   state.scope = 'sold';
@@ -642,11 +637,11 @@ function renderSettlement(coupons) {
     const cs = byOwner[owner];
     const unsettled = cs.filter(c => !c.settled);
     const settled = cs.filter(c => c.settled);
-    const pending = unsettled.reduce((s, c) => s + (c.amount || 0) * (c.quantity || 1) - (c.cost || 0), 0);
-    const done = settled.reduce((s, c) => s + ((c.settle_amount != null ? c.settle_amount : 0) - (c.cost || 0)), 0);
+    const pending = unsettled.reduce((s, c) => s + (c.amount || 0) * (c.quantity || 1), 0);
+    const done = settled.reduce((s, c) => s + ((c.settle_amount != null ? c.settle_amount : 0)), 0);
     html += `<div class="group-head">
       <span class="gh-title">${escapeHtml(owner)}</span>
-      <span class="gh-sub">待结算佣金 ${fmtMoney(pending)} · 已结算佣金 ${fmtMoney(done)} · 待 ${unsettled.length} 张</span>
+      <span class="gh-sub">待结算金额 ${fmtMoney(pending)} · 已结算金额 ${fmtMoney(done)} · 待 ${unsettled.length} 张</span>
     </div>`;
     html += unsettled.length ? unsettled.map(c => couponCard(c, true)).join('') : `<div class="empty small">该所有人暂无可结算券</div>`;
     html += settled.length ? settled.map(c => couponCard(c, true)).join('') : '';
@@ -663,10 +658,11 @@ function openSettleModal(c) {
       <div class="field"><label>成本</label><div>${fmtMoney(c.cost)}</div></div>
       <form id="settle-form">
         <div class="field">
-          <label>结算金额</label>
-          <input name="settle_amount" type="number" step="0.01" min="0" placeholder="实际回款金额" required />
+          <label>售出价（手动输入）</label>
+          <input name="sold_price" type="number" step="0.01" min="0" placeholder="实际卖出价" required />
         </div>
-        <div class="field"><label>本券佣金（结算金额 − 成本）</label><div id="commission-preview">—</div></div>
+        <div class="field"><label>平台手续费（售出价 × 1.6%）</label><div id="fee-preview">—</div></div>
+        <div class="field"><label>结算金额（售出价 − 手续费）</label><div id="settle-preview">—</div></div>
         <div class="modal-actions">
           <button type="button" class="btn ghost" data-close="1">取消</button>
           <button type="submit" class="btn primary">确认结算</button>
@@ -675,19 +671,26 @@ function openSettleModal(c) {
     </div>
   </div>`;
   const f = document.getElementById('settle-form');
-  const amt = f.settle_amount;
-  const preview = document.getElementById('commission-preview');
-  amt.addEventListener('input', () => {
-    const v = parseFloat(amt.value);
-    preview.textContent = (!isNaN(v)) ? fmtMoney(v - (parseFloat(c.cost) || 0)) : '—';
+  const sp = f.sold_price;
+  const feeEl = document.getElementById('fee-preview');
+  const settleEl = document.getElementById('settle-preview');
+  sp.addEventListener('input', () => {
+    const v = parseFloat(sp.value);
+    if (isNaN(v)) { feeEl.textContent = '—'; settleEl.textContent = '—'; return; }
+    const fee = Math.round(v * 0.016 * 100) / 100;
+    const net = Math.round((v - fee) * 100) / 100;
+    feeEl.textContent = fmtMoney(fee);
+    settleEl.textContent = fmtMoney(net);
   });
   f.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const v = parseFloat(amt.value);
-    if (!(v >= 0)) { toast('请输入结算金额'); return; }
+    const v = parseFloat(sp.value);
+    if (!(v >= 0)) { toast('请输入售出价'); return; }
     try {
-      await api('POST', '/coupons/' + c.id + '/settle', { settle_amount: v });
-      toast('已结算，佣金 ' + fmtMoney(v - (parseFloat(c.cost) || 0)));
+      const fee = Math.round(v * 0.016 * 100) / 100;
+      const net = Math.round((v - fee) * 100) / 100;
+      await api('POST', '/coupons/' + c.id + '/settle', { sold_price: v, settle_amount: net });
+      toast('已结算，结算金额 ' + fmtMoney(net));
       closeModal();
       loadData();
     } catch (e2) { toast(e2.message); }

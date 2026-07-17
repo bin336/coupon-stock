@@ -154,29 +154,25 @@ router.get('/report', authMiddleware, adminOnly, (req, res) => {
   const blank = () => ({
     owner: '', qty: 0, face_value: 0, cost: 0,
     settled_count: 0, unsettled_count: 0,
-    settled_amount: 0, settled_profit: 0,
-    pending_amount: 0, pending_profit: 0, total_profit: 0
+    settled_amount: 0, pending_amount: 0, total_amount: 0
   });
   rows.forEach(c => {
     const k = c.owner_name || '未指定';
     const g = byOwner[k] = byOwner[k] || blank();
     g.owner = k;
     const amt = (c.amount || 0) * (c.quantity || 1);
-    const cost = (c.cost || 0);
     g.qty += (c.quantity || 1);
     g.face_value += amt;
-    g.cost += cost;
+    g.cost += (c.cost || 0);
     if (c.settled) {
       g.settled_count += 1;
       const sa = (c.settle_amount != null ? c.settle_amount : 0);
       g.settled_amount += sa;
-      g.settled_profit += (sa - cost);
-      g.total_profit += (sa - cost);
+      g.total_amount += sa;
     } else {
       g.unsettled_count += 1;
       g.pending_amount += amt;
-      g.pending_profit += (amt - cost);
-      g.total_profit += (amt - cost);
+      g.total_amount += amt;
     }
   });
 
@@ -184,19 +180,17 @@ router.get('/report', authMiddleware, adminOnly, (req, res) => {
   const clean = g => ({
     owner: g.owner, qty: g.qty, face_value: r(g.face_value), cost: r(g.cost),
     settled_count: g.settled_count, unsettled_count: g.unsettled_count,
-    settled_amount: r(g.settled_amount), settled_profit: r(g.settled_profit),
-    pending_amount: r(g.pending_amount), pending_profit: r(g.pending_profit),
-    total_profit: r(g.total_profit)
+    settled_amount: r(g.settled_amount), pending_amount: r(g.pending_amount),
+    total_amount: r(g.total_amount)
   });
   const result = Object.keys(byOwner).map(k => byOwner[k]).map(clean);
   const totals = result.reduce((t, g) => {
     t.qty += g.qty; t.face_value += g.face_value; t.cost += g.cost;
     t.settled_count += g.settled_count; t.unsettled_count += g.unsettled_count;
-    t.settled_amount += g.settled_amount; t.settled_profit += g.settled_profit;
-    t.pending_amount += g.pending_amount; t.pending_profit += g.pending_profit;
-    t.total_profit += g.total_profit;
+    t.settled_amount += g.settled_amount; t.pending_amount += g.pending_amount;
+    t.total_amount += g.total_amount;
     return t;
-  }, { qty:0, face_value:0, cost:0, settled_count:0, unsettled_count:0, settled_amount:0, settled_profit:0, pending_amount:0, pending_profit:0, total_profit:0 });
+  }, { qty:0, face_value:0, cost:0, settled_count:0, unsettled_count:0, settled_amount:0, pending_amount:0, total_amount:0 });
 
   res.json({
     rows: result,
@@ -359,17 +353,19 @@ router.post('/:id/settle', authMiddleware, adminOnly, (req, res) => {
   if (!row) return res.status(404).json({ error: '未找到该券' });
   if (row.status !== 'sold') return res.status(400).json({ error: '只有已售出的券才能标记结算' });
   if (row.settled) {
-    // 取消结算：清空结算金额
-    db.prepare("UPDATE coupons SET settled = 0, settle_amount = NULL, updated_at = datetime('now') WHERE id = ?").run(row.id);
+    // 取消结算：清空售出价与结算金额
+    db.prepare("UPDATE coupons SET settled = 0, settle_amount = NULL, sold_price = NULL, updated_at = datetime('now') WHERE id = ?").run(row.id);
     logOp(req, 'unsettle', row.merchant, `取消结算 #${row.id}`);
     return res.json({ ok: true, settled: false });
   }
-  // 标记结算：需录入结算金额（佣金 = 结算金额 − 成本）
-  const amt = parseFloat(req.body && req.body.settle_amount);
-  if (!(amt >= 0)) return res.status(400).json({ error: '请输入结算金额' });
-  db.prepare("UPDATE coupons SET settled = 1, settle_amount = ?, updated_at = datetime('now') WHERE id = ?").run(amt, row.id);
-  logOp(req, 'settle', row.merchant, `结算金额¥${amt} #${row.id}`);
-  res.json({ ok: true, settled: true, settle_amount: amt });
+  // 标记结算：录入「售出价」，系统按 售出价 − 平台手续费(售出价×1.6%) 计算结算金额
+  const sp = parseFloat(req.body && req.body.sold_price);
+  if (!(sp >= 0)) return res.status(400).json({ error: '请输入售出价' });
+  const fee = Math.round(sp * 0.016 * 100) / 100;
+  const amt = Math.round((sp - fee) * 100) / 100;
+  db.prepare("UPDATE coupons SET settled = 1, sold_price = ?, settle_amount = ?, updated_at = datetime('now') WHERE id = ?").run(sp, amt, row.id);
+  logOp(req, 'settle', row.merchant, `售出价¥${sp} 手续费¥${fee} 结算金额¥${amt} #${row.id}`);
+  res.json({ ok: true, settled: true, sold_price: sp, settle_amount: amt });
 });
 
 // 历史数据拼音索引补全：对已存在但 pinyin 为空的券重新计算，使拼音/首字母搜索覆盖旧数据

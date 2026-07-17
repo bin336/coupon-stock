@@ -143,6 +143,9 @@ CREATE TABLE IF NOT EXISTS operation_log (
       if (!cols.includes('pinyin')) {
         _db.exec("ALTER TABLE coupons ADD COLUMN pinyin TEXT");
       }
+      if (!cols.includes('sold_price')) {
+        _db.exec("ALTER TABLE coupons ADD COLUMN sold_price REAL");
+      }
     } catch (e) { console.error('[migrate]', e.message); }
 
     // 首次启动创建管理员
