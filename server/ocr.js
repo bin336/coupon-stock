@@ -23,41 +23,71 @@ function parseFields(text) {
   const t = text || '';
   const fields = { amount: null, coupon_code: null, quantity: null, expiry_date: null };
 
-  // 代金券金额：优先 ¥数字、数字+元，其次 面值/面额/金额 后紧跟（容忍少量噪声字符）的数字
-  const amtPatterns = [
-    /[¥￥]\s*(\d+(?:\.\d+)?)/,
-    /(\d+(?:\.\d+)?)\s*元/,
-    /(?:面额|面值|金额|代金券面额|券额)[^\d]{0,6}?(\d+(?:\.\d+)?)/,
-    /(\d+(?:\.\d+)?)\s*(?:元|块)/
-  ];
-  for (const p of amtPatterns) {
-    const m = t.match(p);
-    if (m) { fields.amount = parseFloat(m[1]); break; }
+  // ---------- 金额 ----------
+  // 多候选收集，避免细价/运费/小字干扰「面值」。优先级：标签(面额/面值/金额) > 数字+元 > ¥数字；同级取较大值。
+  // 支持千分位（1,000元）与「元」被误识别为 兀/园/无/亓 的常见情况。
+  const amtCandidates = [];
+  const pushAmt = (raw, prio) => {
+    if (!raw) return;
+    const n = parseFloat(String(raw).replace(/,/g, ''));
+    if (!isNaN(n) && n > 0) amtCandidates.push({ n, prio });
+  };
+  let m;
+  const labelRe = /(?:代金券面额|面额|面值|金额|券额|总额|价值)[^\d¥￥元]{0,8}?[¥￥]?\s*(\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)/g;
+  while ((m = labelRe.exec(t))) pushAmt(m[1], 3);
+  const yuanRe = /(\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*(?:元|兀|园|无|亓)/g;
+  while ((m = yuanRe.exec(t))) pushAmt(m[1], 2);
+  const yenRe = /[¥￥]\s*(\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)/g;
+  while ((m = yenRe.exec(t))) pushAmt(m[1], 1);
+  if (amtCandidates.length) {
+    amtCandidates.sort((a, b) => b.prio - a.prio || b.n - a.n);
+    fields.amount = amtCandidates[0].n;
   }
 
-  // 券号：券号是 OCR 最易错的字段，且 OCR 常把中文标签逐字拆开（"券 码"）、把数字券号按组拆开（"0285 7178 0658"）。
-  // 两层归一化：① collapseSpacedCodes 合并整行单字符；② 去掉夹在字母/数字之间的空格（"0285 7178 0658" -> "028571780658"）。
-  // 标签词全部容错中文逐字空格（券\s*码 / 卡\s*号 / 兑\s*换\s*码 …），捕获组把连字符纳入券号本体并容错单字符间隔。
-  const norm = collapseSpacedCodes(t).replace(/([A-Za-z0-9])\s+([A-Za-z0-9])/g, '$1$2');
-  const codeLabeled = /(?:券\s*码|券\s*号|券码|券号|卡\s*号|卡号|兑\s*换\s*码|兑换码|密\s*码|密码|编\s*号|编号|单\s*号|单号|序\s*列\s*号|序列号|口\s*令|口令|NO\.?|No\.?)\s*[:：]?\s*([A-Za-z0-9-](?:[ -]?[A-Za-z0-9-]){3,})/i;
-  const codeFallback = /([A-Za-z0-9-](?:[ -]?[A-Za-z0-9-]){3,})/;
-  for (const src of [t, norm]) {
-    const m = src.match(codeLabeled);
-    if (m) { fields.coupon_code = m[1].replace(/\s/g, ''); break; }
-  }
-  if (!fields.coupon_code) {
-    for (const src of [t, norm]) {
-      const m = src.match(codeFallback);
-      if (m) { fields.coupon_code = m[1].replace(/\s/g, ''); break; }
-    }
-    // 兜底结果净化：丢弃像日期（含 / 或 - 的年月日）或孤立 4 位年份的串，避免误把过期时间当券号
-    if (fields.coupon_code) {
-      const bad = /^\d{4}$/.test(fields.coupon_code) || /\d{4}[-/]\d{1,2}/.test(fields.coupon_code);
-      if (bad) fields.coupon_code = null;
+  // ---------- 券号 ----------
+  // ① 带标签（券码/券号/卡号/兑换码/激活码/核销码/提货码/密码/序列号…），标签词容错中文逐字空格。
+  //    捕获为「连续」字母数字（不跨空格），并用前瞻在遇到 元/¥/面额/余/价/张/有效期/过期 或文末时停止，
+  //    避免把二维码旁那串数字与紧随其后的金额数字（如 "...100元"）误拼在一起；最后再剔除可能并入的末尾金额。
+  // ② 兜底：二维码旁多为「一串数字」券码 → 直接在原文取最长的一段纯数字(>=6位)，排除像日期的串、以及紧挨「元」的金额数字。
+  // ③ 再兜底：连续字母数字混合串（排除日期/孤立年份）。
+  const codeLabeled = /(?:券\s*码|券\s*号|券码|券号|卡\s*号|卡号|兑\s*换\s*码|兑换码|激\s*活\s*码|激活码|核\s*销\s*码|核销码|提\s*货\s*码|提货码|密\s*码|密码|编\s*号|编号|单\s*号|单号|序\s*列\s*号|序列号|口\s*令|口令|NO\.?|No\.?)\s*[:：]?\s*([A-Za-z0-9-]+(?:[ -][A-Za-z0-9-]+)*?)(?=\s*(?:元|¥|面|额|余|价|张|总|有\s*效\s*期|过\s*期)|$)/i;
+  let code = null;
+  const ml = t.match(codeLabeled);
+  if (ml) {
+    code = ml[1].replace(/\s/g, '');
+    // 安全网：若误并入了末尾的金额数字（如 "...100元" 被并成 "...100"），剔除之
+    if (fields.amount != null) {
+      const a = String(fields.amount);
+      if (code.length > a.length && code.endsWith(a)) code = code.slice(0, code.length - a.length);
     }
   }
+  if (!code) {
+    const isDateLike = s => /^\d{4}[-/.]?\d{1,2}[-/.]?\d{1,2}$/.test(s) || /^\d{6}$/.test(s);
+    const digitRe = /\d{6,}/g;
+    const cands = [];
+    let dm;
+    while ((dm = digitRe.exec(t))) {
+      const s = dm[0];
+      if (isDateLike(s)) continue;
+      const after = t.slice(dm.index + s.length, dm.index + s.length + 2);
+      if (/^[元兀园无亓]/.test(after)) continue; // 这是金额数字，不是券码
+      cands.push(s);
+    }
+    cands.sort((a, b) => b.length - a.length);
+    if (cands.length) code = cands[0];
+  }
+  if (!code) {
+    const codeFallback = /([A-Za-z0-9-]{4,})/;
+    const mf = t.match(codeFallback);
+    if (mf) {
+      const v = mf[1];
+      const bad = /^\d{4}$/.test(v) || /\d{4}[-/]\d{1,2}/.test(v);
+      if (!bad) code = v;
+    }
+  }
+  fields.coupon_code = code;
 
-  // 张数：数字+张，或 ×数字 / x数字，或 共数字张
+  // ---------- 张数 ----------
   const qPatterns = [
     /(\d+)\s*张/,
     /[×xX*]\s*(\d+)/,
@@ -68,7 +98,7 @@ function parseFields(text) {
     if (m) { fields.quantity = parseInt(m[1], 10); break; }
   }
 
-  // 过期时间：多种日期格式 -> YYYY-MM-DD（带合法性校验）
+  // ---------- 过期时间 ----------
   const datePatterns = [
     /(\d{4})[-./年](\d{1,2})[-./月](\d{1,2})日?/,
     /(\d{4})年(\d{1,2})月(\d{1,2})日/,
