@@ -273,7 +273,7 @@ function getToolbar() {
     return `<div class="toolbar report-toolbar">
       <button class="btn ghost" id="btn-back">← 返回</button>
       <button class="btn ghost" id="rf-settle">结算</button>
-      <input class="search" id="rf-owner" placeholder="所有人（留空=全部）" value="${escapeHtml(f.owner)}" />
+      ${ownerSelect({ id: 'rf-owner', selected: f.owner, cls: 'search', emptyLabel: '所有人（全部）' })}
       <div class="dt-group">
         <input type="date" class="dt" id="rf-start" value="${escapeHtml(f.start)}" />
         <span class="dt-sep">至</span>
@@ -851,6 +851,29 @@ function openSettleModal(c) {
   bindClose();
 }
 
+/* ---------- 所有人下拉选项 ----------
+   候选来源：当前用户 + 全部用户(管理员可见) + 已加载券里出现过的 owner_name，
+   保证编辑/历史数据里的旧值一定在列表中。 */
+function ownerCandidates() {
+  const names = [];
+  const seen = new Set();
+  const add = n => { n = (n || '').toString().trim(); if (n && !seen.has(n)) { seen.add(n); names.push(n); } };
+  add(state.user && state.user.display_name);
+  (state.users || []).forEach(u => add(u.display_name || u.username));
+  (state.data || []).forEach(c => add(c.owner_name));
+  (state.coupons || []).forEach(c => add(c.owner_name));
+  return names.sort((a, b) => a.localeCompare(b, 'zh'));
+}
+function ownerSelect({ name, id, selected, cls, emptyLabel } = {}) {
+  const list = ownerCandidates();
+  if (selected && !list.includes(selected)) list.unshift(selected);
+  let opts = '';
+  if (emptyLabel != null) opts += `<option value="">${escapeHtml(emptyLabel)}</option>`;
+  opts += list.map(n => `<option value="${escapeHtml(n)}"${n === selected ? ' selected' : ''}>${escapeHtml(n)}</option>`).join('');
+  const attrs = [name ? `name="${name}"` : '', id ? `id="${id}"` : '', cls ? `class="${cls}"` : ''].filter(Boolean).join(' ');
+  return `<select ${attrs}>${opts}</select>`;
+}
+
 /* ---------- 录入 / 编辑 弹窗 ---------- */
 function openCouponModal(coupon) {
   const isEdit = !!coupon;
@@ -894,7 +917,7 @@ function openCouponModal(coupon) {
           </div>
           <div class="field">
             <label>所有人</label>
-            <input name="owner_name" value="${escapeHtml(owner)}" placeholder="默认录入人" />
+            ${ownerSelect({ name: 'owner_name', selected: owner })}
           </div>
         </div>
         <div class="field">
@@ -1046,7 +1069,7 @@ function rowInner() {
       <div class="field" style="margin:0"><label>过期时间 <span class="req">*</span></label><input name="expiry_date" type="date" required /></div>
       <div class="field" style="margin:0"><label>成本</label><input name="cost" type="number" step="0.01" placeholder="0" /></div>
     </div>
-    <div class="field" style="margin:0"><label>所有人</label><input name="owner_name" value="${escapeHtml(state.user ? state.user.display_name : '')}" /></div>
+    <div class="field" style="margin:0"><label>所有人</label>${ownerSelect({ name: 'owner_name', selected: state.user ? state.user.display_name : '' })}</div>
     <div class="field" style="margin:0"><label>平台</label><input name="platform" placeholder="选填" /></div>
     <div class="field" style="margin:0"><label>备注</label><input name="note" placeholder="选填" /></div>`;
 }
@@ -1066,7 +1089,7 @@ function openBatchModal() {
           </div>
           <div class="field" style="margin:0">
             <label>所有人</label>
-            <input id="bc-owner" value="${escapeHtml(state.user ? state.user.display_name : '')}" placeholder="默认录入人" />
+            ${ownerSelect({ id: 'bc-owner', selected: state.user ? state.user.display_name : '' })}
           </div>
         </div>
         <div class="field" style="margin:10px 0 0">
