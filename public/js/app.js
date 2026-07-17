@@ -7,6 +7,7 @@ const state = {
   token: localStorage.getItem('cs_token') || null,
   user: JSON.parse(localStorage.getItem('cs_user') || 'null'),
   scope: 'default',   // default | all | sold | expired
+  settlement: false,  // 是否处于佣金结算模块视图
   q: '',
   coupons: [],
   stats: {},
@@ -119,7 +120,11 @@ async function loadData() {
   state.coupons = list.coupons;
   state.stats = stats;
   renderStats();
-  renderList();
+  if (state.settlement) {
+    renderSettlement(state.coupons.filter(c => c.status === 'sold'));
+  } else {
+    renderList();
+  }
 }
 async function loadUsers() {
   if (state.user.role !== 'admin') return;
@@ -144,7 +149,6 @@ function renderApp() {
         <span>${escapeHtml(state.user.display_name)}</span>
         <button class="icon" id="btn-batch">批量</button>
         <button class="icon" id="btn-users" style="display:${state.user.role==='admin'?'inline-block':'none'}">用户</button>
-        <button class="icon" id="btn-backup">下载</button>
         <button class="icon" id="btn-logout">退出</button>
       </div>
   </div>
@@ -153,34 +157,40 @@ function renderApp() {
     <div class="stat">
       <div class="label">未售 · 未过期</div>
       <div class="value">${s.unsold_unexpired || 0}</div>
-      <div class="sub">张可售券</div>
+      <div class="sub">张可售券 · 成本 ${fmtMoney(s.cost)}</div>
     </div>
-    <div class="stat">
-      <div class="label">在库面值</div>
-      <div class="value">${fmtMoney(s.face_value)}</div>
-      <div class="sub">成本 ${fmtMoney(s.cost)}</div>
-    </div>
-    <div class="stat">
-      <div class="label">潜在利润</div>
-      <div class="value">${fmtMoney(s.potential)}</div>
-      <div class="sub">面值 − 成本</div>
+    <div class="stat" id="stat-pending" style="cursor:pointer">
+      <div class="label">已售 · 待结算</div>
+      <div class="value">${s.sold_unsettled || 0}</div>
+      <div class="sub">张未结算 · 点此结算</div>
     </div>
     <div class="stat alert">
-      <div class="label">已过期未售</div>
-      <div class="value">${s.expired_unsold || 0}</div>
-      <div class="sub">需清理</div>
+      <div class="label">7天内到期</div>
+      <div class="value">${s.expiring_soon || 0}</div>
+      <div class="sub">需尽快售出</div>
+    </div>
+    <div class="stat">
+      <div class="label">至今我们已售出</div>
+      <div class="value">${s.sold || 0}</div>
+      <div class="sub">张券</div>
     </div>
   </div>
 
+  ${state.settlement ? `
+  <div class="toolbar" style="display:flex;align-items:center;gap:10px">
+    <button class="btn ghost" id="btn-back">← 返回</button>
+    <div style="font-weight:600;font-size:15px">佣金结算 · 按所有人汇总</div>
+  </div>` : `
   <div class="toolbar">
     <input class="search" id="search" placeholder="搜商家 / 券号 / 所有人" value="${escapeHtml(state.q)}" />
+    <div class="recent" id="recent-searches"></div>
     <div class="chips" id="chips">
       <div class="chip ${state.scope==='default'?'active':''}" data-scope="default">未售·未过期</div>
       <div class="chip ${state.scope==='all'?'active':''}" data-scope="all">全部</div>
       <div class="chip ${state.scope==='sold'?'active':''}" data-scope="sold">已售</div>
       <div class="chip ${state.scope==='expired'?'active':''}" data-scope="expired">已过期</div>
     </div>
-  </div>
+  </div>`}
 
   <div class="list" id="list"></div>
 
@@ -194,7 +204,12 @@ function renderApp() {
   let st;
   search.addEventListener('input', (e) => {
     clearTimeout(st);
-    st = setTimeout(() => { state.q = e.target.value; loadData(); }, 250);
+    st = setTimeout(() => {
+      state.q = e.target.value;
+      const q = state.q.trim();
+      if (q.length >= 1) { api('POST', '/coupons/search-log', { term: q }).catch(() => {}); }
+      loadData();
+    }, 250);
   });
 
   document.getElementById('chips').addEventListener('click', (e) => {
@@ -208,40 +223,50 @@ function renderApp() {
   document.getElementById('fab').onclick = () => openCouponModal();
   const bb = document.getElementById('btn-batch');
   if (bb) bb.onclick = openBatchModal;
-  const bbk = document.getElementById('btn-backup');
-  if (bbk) bbk.onclick = downloadBackup;
+
+  if (state.settlement) {
+    const back = document.getElementById('btn-back');
+    if (back) back.onclick = () => { state.settlement = false; state.scope = 'default'; renderApp(); loadData(); };
+    return;
+  }
+
+  const statPending = document.getElementById('stat-pending');
+  if (statPending) statPending.onclick = openSettlement;
+
   renderList();
+  renderRecentSearches();
 }
 
-/* ---------- 下载备份包（在 App 内触发，绕过外部直链 404） ---------- */
-async function downloadBackup() {
+/* ---------- 近期搜索（服务端共享：所有用户搜索频次最高的词，点击即搜） ---------- */
+async function renderRecentSearches() {
+  const box = document.getElementById('recent-searches');
+  if (!box) return;
+  let terms = [];
   try {
-    toast('正在准备下载…');
-    const res = await fetch('/coupon-stock-backup.zip');
-    if (!res.ok) throw new Error('文件未找到');
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'coupon-stock-backup.zip';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-    toast('已开始下载，去下载目录找 coupon-stock-backup.zip');
-  } catch (e) {
-    toast('下载失败，请刷新页面后重试');
-  }
+    const data = await api('GET', '/coupons/recent-searches');
+    terms = data.terms || [];
+  } catch (e) { terms = []; }
+  if (!terms.length) { box.innerHTML = ''; return; }
+  box.innerHTML =
+    `<span class="recent-label">大家都在搜</span>` +
+    terms.map(t => `<span class="recent-tag" data-term="${escapeHtml(t)}">${escapeHtml(t)}</span>`).join('');
+  box.querySelectorAll('.recent-tag').forEach(el => el.onclick = () => {
+    const term = el.dataset.term;
+    const s = document.getElementById('search');
+    if (s) s.value = term;
+    state.q = term;
+    loadData();
+  });
 }
 
 /* ---------- 统计区独立刷新（避免重绘整个 App） ---------- */
 function renderStats() {
   const s = state.stats;
   const els = [
-    { sel: '.stat:nth-child(1) .value', val: s.unsold_unexpired || 0 },
-    { sel: '.stat:nth-child(2) .value', val: fmtMoney(s.face_value || 0), sub: '.stat:nth-child(2) .sub', subText: '成本 ' + fmtMoney(s.cost || 0) },
-    { sel: '.stat:nth-child(3) .value', val: fmtMoney(s.potential || 0) },
-    { sel: '.stat:nth-child(4) .value', val: s.expired_unsold || 0 }
+    { sel: '.stat:nth-child(1) .value', val: s.unsold_unexpired || 0, sub: '.stat:nth-child(1) .sub', subText: '张可售券 · 成本 ' + fmtMoney(s.cost || 0) },
+    { sel: '.stat:nth-child(2) .value', val: s.sold_unsettled || 0, sub: '.stat:nth-child(2) .sub', subText: '张未结算' },
+    { sel: '.stat:nth-child(3) .value', val: s.expiring_soon || 0, sub: '.stat:nth-child(3) .sub', subText: '需尽快售出' },
+    { sel: '.stat:nth-child(4) .value', val: s.sold || 0, sub: '.stat:nth-child(4) .sub', subText: '张券' }
   ];
   const container = document.querySelector('.stats');
   if (!container) return;
@@ -349,11 +374,14 @@ function bindListEvents() {
         try { await api('POST', '/coupons/' + id + '/sold'); toast('已更新'); loadData(); }
         catch (e) { toast(e.message); }
       } else if (act === 'settle') {
-        try {
-          await api('POST', '/coupons/' + id + '/settle');
-          toast(btn.textContent.includes('标记结算') ? '已标记结算' : '已取消结算');
-          loadData();
-        } catch (e) { toast(e.message); }
+        const c = state.coupons.find(x => x.id == id);
+        if (!c) return;
+        if (c.settled) {
+          try { await api('POST', '/coupons/' + id + '/settle'); toast('已取消结算'); loadData(); }
+          catch (e) { toast(e.message); }
+        } else {
+          openSettleModal(c);
+        }
       } else if (act === 'edit') {
         const c = state.coupons.find(x => x.id == id);
         if (c) openCouponModal(c);
@@ -376,6 +404,82 @@ function bindListEvents() {
       saveImage(btn.getAttribute('data-save'), btn.getAttribute('data-name'));
     };
   });
+}
+
+/* ---------- 佣金结算模块 ---------- */
+async function openSettlement() {
+  state.scope = 'sold';
+  state.q = '';
+  state.settlement = true;
+  renderApp();
+  loadData();
+}
+function renderSettlement(coupons) {
+  const list = document.getElementById('list');
+  if (!list) return;
+  const sold = coupons.filter(c => c.status === 'sold');
+  if (!sold.length) { list.innerHTML = `<div class="empty">还没有已售出的券</div>`; return; }
+  const byOwner = {};
+  sold.forEach(c => {
+    const k = (c.owner_name || '未指定') + '';
+    (byOwner[k] = byOwner[k] || []).push(c);
+  });
+  let html = '';
+  Object.keys(byOwner).forEach(owner => {
+    const cs = byOwner[owner];
+    const unsettled = cs.filter(c => !c.settled);
+    const settled = cs.filter(c => c.settled);
+    const pending = unsettled.reduce((s, c) => s + (c.amount || 0) * (c.quantity || 1) - (c.cost || 0), 0);
+    const done = settled.reduce((s, c) => s + ((c.settle_amount != null ? c.settle_amount : 0) - (c.cost || 0)), 0);
+    html += `<div class="group-head">
+      <span class="gh-title">${escapeHtml(owner)}</span>
+      <span class="gh-sub">待结算佣金 ${fmtMoney(pending)} · 已结算佣金 ${fmtMoney(done)} · 待 ${unsettled.length} 张</span>
+    </div>`;
+    html += unsettled.length ? unsettled.map(c => couponCard(c, true)).join('') : `<div class="empty small">该所有人暂无可结算券</div>`;
+    html += settled.length ? settled.map(c => couponCard(c, true)).join('') : '';
+  });
+  list.innerHTML = html;
+  bindListEvents();
+}
+function openSettleModal(c) {
+  $modal.innerHTML = `
+  <div class="modal-mask" data-close="1">
+    <div class="modal" onclick="event.stopPropagation()">
+      <h3>标记结算</h3>
+      <div class="field"><label>商家</label><div>${escapeHtml(c.merchant)}</div></div>
+      <div class="field"><label>成本</label><div>${fmtMoney(c.cost)}</div></div>
+      <form id="settle-form">
+        <div class="field">
+          <label>结算金额</label>
+          <input name="settle_amount" type="number" step="0.01" min="0" placeholder="实际回款金额" required />
+        </div>
+        <div class="field"><label>本券佣金（结算金额 − 成本）</label><div id="commission-preview">—</div></div>
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" data-close="1">取消</button>
+          <button type="submit" class="btn primary">确认结算</button>
+        </div>
+      </form>
+    </div>
+  </div>`;
+  const f = document.getElementById('settle-form');
+  const amt = f.settle_amount;
+  const preview = document.getElementById('commission-preview');
+  amt.addEventListener('input', () => {
+    const v = parseFloat(amt.value);
+    preview.textContent = (!isNaN(v)) ? fmtMoney(v - (parseFloat(c.cost) || 0)) : '—';
+  });
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const v = parseFloat(amt.value);
+    if (!(v >= 0)) { toast('请输入结算金额'); return; }
+    try {
+      await api('POST', '/coupons/' + c.id + '/settle', { settle_amount: v });
+      toast('已结算，佣金 ' + fmtMoney(v - (parseFloat(c.cost) || 0)));
+      closeModal();
+      loadData();
+    } catch (e2) { toast(e2.message); }
+  });
+  bindClose();
 }
 
 /* ---------- 录入 / 编辑 弹窗 ---------- */
@@ -836,7 +940,9 @@ function renderUserList() {
         <div class="role">${u.role === 'admin' ? '管理员' : '成员'}</div>
       </div>
       <div style="display:flex;gap:6px">
-        ${u.id !== state.user.id ? `<button class="btn ghost" data-reset="${u.id}">重置密码</button><button class="btn danger" data-del="${u.id}">删除</button>` : '<span style="color:#ccc;font-size:12px">当前账号</span>'}
+        ${u.id === state.user.id
+          ? `<button class="btn ghost" data-reset="${u.id}">修改我的密码</button>`
+          : `<button class="btn ghost" data-reset="${u.id}">重置密码</button><button class="btn danger" data-del="${u.id}">删除</button>`}
       </div>
     </div>`).join('');
   box.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {

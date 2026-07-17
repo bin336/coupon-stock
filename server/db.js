@@ -88,7 +88,15 @@ CREATE TABLE IF NOT EXISTS coupons (
   note TEXT,
   created_by INTEGER,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  settle_amount REAL
+);
+
+CREATE TABLE IF NOT EXISTS search_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  term TEXT NOT NULL,
+  user_id INTEGER,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 `);
 
@@ -98,6 +106,9 @@ CREATE TABLE IF NOT EXISTS coupons (
       const cols = ti.length ? ti[0].values.map(r => r[1]) : [];
       if (!cols.includes('settled')) {
         _db.exec("ALTER TABLE coupons ADD COLUMN settled INTEGER NOT NULL DEFAULT 0");
+      }
+      if (!cols.includes('settle_amount')) {
+        _db.exec("ALTER TABLE coupons ADD COLUMN settle_amount REAL");
       }
     } catch (e) { console.error('[migrate]', e.message); }
 

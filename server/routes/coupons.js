@@ -70,18 +70,44 @@ router.get('/stats', authMiddleware, (req, res) => {
   const all = db.prepare('SELECT * FROM coupons').all();
   const unsoldUnexpired = all.filter(c => c.status === 'unsold' && (!c.expiry_date || c.expiry_date >= today));
   const sold = all.filter(c => c.status === 'sold');
+  const soldUnsettled = sold.filter(c => !c.settled);
   const expiredUnsold = all.filter(c => c.status === 'unsold' && c.expiry_date && c.expiry_date < today);
   const faceValue = unsoldUnexpired.reduce((s, c) => s + (c.amount || 0) * (c.quantity || 1), 0);
   const cost = unsoldUnexpired.reduce((s, c) => s + (c.cost || 0), 0);
   const potential = faceValue - cost;
+  // 7 天内到期（未售且未过期、到期日 <= 今天+7）
+  const [y, m, d] = today.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + 7);
+  const off = dt.getTimezoneOffset();
+  const soon = new Date(dt.getTime() - off * 60000).toISOString().slice(0, 10);
+  const expiringSoon = unsoldUnexpired.filter(c => c.expiry_date && c.expiry_date <= soon).length;
   res.json({
     unsold_unexpired: unsoldUnexpired.length,
     face_value: Math.round(faceValue * 100) / 100,
     cost: Math.round(cost * 100) / 100,
     potential: Math.round(potential * 100) / 100,
     sold: sold.length,
+    sold_unsettled: soldUnsettled.length,
+    expiring_soon: expiringSoon,
     expired_unsold: expiredUnsold.length
   });
+});
+
+// 记录一次搜索（供「所有用户共享的近期搜索」使用）
+router.post('/search-log', authMiddleware, (req, res) => {
+  const term = ((req.body && req.body.term) || '').trim();
+  if (!term) return res.json({ ok: true });
+  db.prepare('INSERT INTO search_log (term, user_id) VALUES (?, ?)').run(term, req.user.id);
+  res.json({ ok: true });
+});
+
+// 所有用户搜索频次最高的词（团队共享快捷词）
+router.get('/recent-searches', authMiddleware, (req, res) => {
+  const rows = db.prepare(
+    'SELECT term FROM search_log GROUP BY term ORDER BY COUNT(*) DESC, MAX(created_at) DESC LIMIT 8'
+  ).all();
+  res.json({ terms: rows.map(r => r.term) });
 });
 
 // 新增
@@ -209,9 +235,16 @@ router.post('/:id/settle', authMiddleware, adminOnly, (req, res) => {
   const row = db.prepare('SELECT * FROM coupons WHERE id = ?').get(req.params.id);
   if (!row) return res.status(404).json({ error: '未找到该券' });
   if (row.status !== 'sold') return res.status(400).json({ error: '只有已售出的券才能标记结算' });
-  const newSettled = row.settled ? 0 : 1;
-  db.prepare("UPDATE coupons SET settled = ?, updated_at = datetime('now') WHERE id = ?").run(newSettled, row.id);
-  res.json({ ok: true, settled: newSettled });
+  if (row.settled) {
+    // 取消结算：清空结算金额
+    db.prepare("UPDATE coupons SET settled = 0, settle_amount = NULL, updated_at = datetime('now') WHERE id = ?").run(row.id);
+    return res.json({ ok: true, settled: false });
+  }
+  // 标记结算：需录入结算金额（佣金 = 结算金额 − 成本）
+  const amt = parseFloat(req.body && req.body.settle_amount);
+  if (!(amt >= 0)) return res.status(400).json({ error: '请输入结算金额' });
+  db.prepare("UPDATE coupons SET settled = 1, settle_amount = ?, updated_at = datetime('now') WHERE id = ?").run(amt, row.id);
+  res.json({ ok: true, settled: true, settle_amount: amt });
 });
 
 module.exports = router;
