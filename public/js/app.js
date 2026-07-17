@@ -700,27 +700,25 @@ function renderSettleMine(pending) {
 // 视图B：全部（以人为标签，分别显示需结算金额 / 待别人结算金额）
 function renderSettleAll(pending) {
   const persons = {};
-  const person = n => persons[n] = persons[n] || { pay: 0, payCount: 0, rec: 0, recCount: 0 };
+  const person = n => persons[n] = persons[n] || { pay: 0, payCount: 0, rec: 0, recCount: 0, payList: [], recList: [] };
   pending.forEach(c => {
     const seller = c.sold_by_name || '（未记录销售人）';
     const owner = c.owner_name || '（未指定所有人）';
-    person(seller).pay += (parseFloat(c.settle_amount) || 0); person(seller).payCount++;
-    person(owner).rec += (parseFloat(c.settle_amount) || 0); person(owner).recCount++;
+    person(seller).pay += (parseFloat(c.settle_amount) || 0); person(seller).payCount++; person(seller).payList.push(c);
+    person(owner).rec += (parseFloat(c.settle_amount) || 0); person(owner).recCount++; person(owner).recList.push(c);
   });
   const names = Object.keys(persons);
   if (!names.length) return `<div class="empty">没有待结算的券</div>`;
   return names.map(name => {
     const p = persons[name];
-    const rel = pending.filter(c => (c.sold_by_name || '（未记录销售人）') === name || (c.owner_name || '（未指定所有人）') === name);
     return `<div class="person-card">
       <div class="pc-name">${escapeHtml(name)}</div>
       <div class="pc-rows">
         <div class="pc-row pay"><span>需结算金额（他付）</span><b>${fmtMoney(p.pay)}</b><small>${p.payCount} 张</small></div>
         <div class="pc-row rec"><span>待别人结算金额（收他）</span><b>${fmtMoney(p.rec)}</b><small>${p.recCount} 张</small></div>
       </div>
-      <details class="pc-detail"><summary>明细（${rel.length} 张）</summary>
-        <div class="sg-items">${rel.map(settleItemLine).join('')}</div>
-      </details>
+      ${p.payCount ? `<details class="pc-detail pc-pay-detail"><summary>需结算明细（${p.payCount} 张）</summary><div class="sg-items">${p.payList.map(settleItemLine).join('')}</div></details>` : ''}
+      ${p.recCount ? `<details class="pc-detail pc-rec-detail"><summary>待收明细（${p.recCount} 张）</summary><div class="sg-items">${p.recList.map(settleItemLine).join('')}</div></details>` : ''}
     </div>`;
   }).join('');
 }
