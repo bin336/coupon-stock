@@ -171,8 +171,9 @@ router.get('/report', authMiddleware, adminOnly, (req, res) => {
       g.total_amount += sa;
     } else {
       g.unsettled_count += 1;
-      g.pending_amount += amt;
-      g.total_amount += amt;
+      const pa = (c.settle_amount != null ? c.settle_amount : amt); // 优先用结算金额；历史无售出价时退回面值
+      g.pending_amount += pa;
+      g.total_amount += pa;
     }
   });
 
