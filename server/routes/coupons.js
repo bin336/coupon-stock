@@ -6,6 +6,22 @@ const path = require('path');
 const fs = require('fs');
 const { authMiddleware, adminOnly } = require('../middleware/auth');
 
+// 拼音搜索：pinyin-pro 为可选依赖，缺失时自动降级（仅失去拼音/首字母搜索能力，不影响其它功能）
+let pinyinLib = null;
+try { pinyinLib = require('pinyin-pro'); } catch (e) { pinyinLib = null; }
+// 将若干文本字段转为「全拼 + 首字母」小写串，存入 pinyin 列供模糊检索
+// 例：「美团 饿了么」→ "meituan elms mt elm"
+function toPinyin(...parts) {
+  const text = parts.filter(Boolean).join(' ');
+  if (!pinyinLib || !text) return '';
+  try {
+    const opt = { toneType: 'none', type: 'string', nonZh: 'consecutive' };
+    const full = pinyinLib.pinyin(text, opt).replace(/\s+/g, '');
+    const initials = pinyinLib.pinyin(text, { ...opt, pattern: 'first' }).replace(/\s+/g, '');
+    return (full + ' ' + initials).toLowerCase();
+  } catch (e) { return ''; }
+}
+
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', '..', 'data');
 const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -59,9 +75,10 @@ router.get('/', authMiddleware, (req, res) => {
     params.push(today);
   }
   if (q) {
-    sql += ' AND (merchant LIKE ? OR coupon_code LIKE ? OR owner_name LIKE ? OR platform LIKE ? OR note LIKE ?)';
     const like = '%' + q + '%';
-    params.push(like, like, like, like, like);
+    const likePy = '%' + q.toLowerCase() + '%';
+    sql += ' AND (merchant LIKE ? OR coupon_code LIKE ? OR owner_name LIKE ? OR platform LIKE ? OR note LIKE ? OR pinyin LIKE ?)';
+    params.push(like, like, like, like, like, likePy);
   }
   if (owner) {
     sql += ' AND owner_name LIKE ?';
@@ -219,9 +236,9 @@ router.post('/', authMiddleware, upload.single('image'), (req, res) => {
   const image_filename = req.file ? req.file.filename : null;
 
   const info = db.prepare(`INSERT INTO coupons
-    (merchant, amount, coupon_code, quantity, expiry_date, cost, owner_name, platform, owner_user_id, image_filename, note, created_by)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
-    .run(merchant, amount, coupon_code, quantity, expiry_date, cost, owner_name, platform, req.user.id, image_filename, note, req.user.id);
+    (merchant, amount, coupon_code, quantity, expiry_date, cost, owner_name, platform, owner_user_id, image_filename, note, created_by, pinyin)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(merchant, amount, coupon_code, quantity, expiry_date, cost, owner_name, platform, req.user.id, image_filename, note, req.user.id, toPinyin(merchant, owner_name, platform, note));
   const row = db.prepare('SELECT * FROM coupons WHERE id = ?').get(info.lastInsertRowid);
   logOp(req, 'add_coupon', merchant, `面值¥${amount} ×${quantity}张 成本¥${cost} 所有人:${owner_name}`);
   res.json({ coupon: row });
@@ -240,8 +257,8 @@ router.post('/batch', authMiddleware, uploadArray, (req, res) => {
   const created = [];
   const errors = [];
   const insert = db.prepare(`INSERT INTO coupons
-    (merchant, amount, coupon_code, quantity, expiry_date, cost, owner_name, platform, owner_user_id, image_filename, note, created_by)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`);
+    (merchant, amount, coupon_code, quantity, expiry_date, cost, owner_name, platform, owner_user_id, image_filename, note, created_by, pinyin)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`);
   const tx = db.transaction(() => {
     files.forEach((file, i) => {
       const b = items[i] || {};
@@ -256,7 +273,7 @@ router.post('/batch', authMiddleware, uploadArray, (req, res) => {
       const platform = (b.platform || '').toString().trim();
       const note = (b.note || '').toString().trim();
       try {
-        const info = insert.run(merchant, amount, coupon_code, quantity, expiry_date, cost, owner_name, platform, req.user.id, file.filename, note, req.user.id);
+        const info = insert.run(merchant, amount, coupon_code, quantity, expiry_date, cost, owner_name, platform, req.user.id, file.filename, note, req.user.id, toPinyin(merchant, owner_name, platform, note));
         created.push(info.lastInsertRowid);
       } catch (e) {
         errors.push({ index: i, file: file.originalname, error: '入库失败：' + e.message });
@@ -297,9 +314,9 @@ router.put('/:id', authMiddleware, upload.single('image'), (req, res) => {
   if (req.file) image_filename = req.file.filename;
 
   db.prepare(`UPDATE coupons SET
-    merchant=?, amount=?, coupon_code=?, quantity=?, expiry_date=?, cost=?, owner_name=?, platform=?, note=?, image_filename=?, updated_at=datetime('now')
+    merchant=?, amount=?, coupon_code=?, quantity=?, expiry_date=?, cost=?, owner_name=?, platform=?, note=?, image_filename=?, pinyin=?, updated_at=datetime('now')
     WHERE id=?`)
-    .run(merchant, amount, coupon_code, quantity, expiry_date, cost, owner_name, platform, note, image_filename, row.id);
+    .run(merchant, amount, coupon_code, quantity, expiry_date, cost, owner_name, platform, note, image_filename, toPinyin(merchant, owner_name, platform, note), row.id);
   const updated = db.prepare('SELECT * FROM coupons WHERE id = ?').get(row.id);
   logOp(req, 'edit_coupon', merchant, `编辑券 #${row.id}`);
   res.json({ coupon: updated });
@@ -355,5 +372,20 @@ router.post('/:id/settle', authMiddleware, adminOnly, (req, res) => {
   res.json({ ok: true, settled: true, settle_amount: amt });
 });
 
+// 历史数据拼音索引补全：对已存在但 pinyin 为空的券重新计算，使拼音/首字母搜索覆盖旧数据
+function backfillPinyin() {
+  try {
+    const rows = db.prepare("SELECT id, merchant, owner_name, platform, note, pinyin FROM coupons WHERE pinyin IS NULL OR pinyin = ''").all();
+    if (!rows.length) return;
+    const upd = db.prepare("UPDATE coupons SET pinyin = ? WHERE id = ?");
+    const tx = db.transaction(() => {
+      rows.forEach(r => upd.run(toPinyin(r.merchant, r.owner_name, r.platform, r.note), r.id));
+    });
+    tx();
+    console.log(`[backfill] 已补全拼音索引 ${rows.length} 条`);
+  } catch (e) { console.error('[backfill]', e.message); }
+}
+
 module.exports = router;
 module.exports.UPLOAD_DIR = UPLOAD_DIR;
+module.exports.backfillPinyin = backfillPinyin;

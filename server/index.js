@@ -24,6 +24,9 @@ async function main() {
   // 等待数据库初始化（纯 JS SQLite，首次加载 WASM + 建表）
   await db.init();
 
+  // 补全历史券的拼音索引（支持拼音/首字母搜索）
+  try { couponRoutes.backfillPinyin(); } catch (e) { console.error('[backfill]', e.message); }
+
   const app = express();
   app.use(express.json());
 

@@ -276,7 +276,7 @@ function getToolbar() {
     </div>`;
   }
   return `<div class="toolbar">
-    <input class="search" id="search" placeholder="搜商家 / 券号 / 所有人" value="${escapeHtml(state.q)}" />
+    <input class="search" id="search" placeholder="搜商家 / 券号 / 所有人（支持拼音、首字母）" value="${escapeHtml(state.q)}" />
     <div class="recent" id="recent-searches"></div>
     <div class="chips" id="chips">
       <div class="chip ${state.scope==='default'?'active':''}" data-scope="default">未售·未过期</div>
