@@ -740,7 +740,7 @@ function renderSettleAll(pending) {
       <div class="pc-name">${escapeHtml(name)}</div>
       <div class="pc-rows">
         <div class="pc-row pay"><span>需结算金额（他付）</span><b>${fmtMoney(p.pay)}</b><small>${p.payCount} 张</small></div>
-        <div class="pc-row rec"><span>待别人结算金额（收他）</span><b>${fmtMoney(p.rec)}</b><small>${p.recCount} 张</small></div>
+        <div class="pc-row rec"><span>待别人结算金额（他收）</span><b>${fmtMoney(p.rec)}</b><small>${p.recCount} 张</small></div>
       </div>
       ${p.payCount ? `<details class="pc-detail pc-pay-detail"><summary>需结算明细（${p.payCount} 张）</summary><div class="sg-items">${p.payList.map(settleItemLine).join('')}</div></details>` : ''}
       ${p.recCount ? `<details class="pc-detail pc-rec-detail"><summary>待收明细（${p.recCount} 张）</summary><div class="sg-items">${p.recList.map(settleItemLine).join('')}</div></details>` : ''}
