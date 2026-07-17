@@ -6,12 +6,15 @@ const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', '..', 'data'
 const TESS_CACHE = path.join(DATA_DIR, 'tessdata');
 if (!fs.existsSync(TESS_CACHE)) fs.mkdirSync(TESS_CACHE, { recursive: true });
 
-// 把「逐字符带空格」的疑似券号合并：如 "S B 2 0 2 6 - 7 7 8 8" -> "SB2026-7788"
-// 仅当整行都由单字符的 ASCII 字母/数字/连字符组成时才合并，避免误伤正常文本
+// 把「带空格/连字符分组」的疑似券号合并：
+//   "8 6 8 8 2 2 3 3"   -> "86882233"   （逐字符空格）
+//   "8688 2233 4455"    -> "868822334455"（每 3~6 位一组，真实券最常见）
+//   "XK 2026 A8"        -> "XK2026A8"
+// 仅当「整行 token 全部是数字或字母数字段」时才合并，避免误并正常文本/金额。
 function collapseSpacedCodes(text) {
   return (text || '').split('\n').map(line => {
     const toks = line.trim().split(/\s+/).filter(Boolean);
-    if (toks.length >= 5 && toks.every(t => /^[A-Za-z0-9-]$/.test(t))) {
+    if (toks.length >= 2 && toks.every(t => /^[A-Za-z0-9-]{1,8}$/.test(t))) {
       return toks.join('');
     }
     return line;
@@ -77,12 +80,15 @@ function parseFields(text) {
     if (cands.length) code = cands[0];
   }
   if (!code) {
-    const codeFallback = /([A-Za-z0-9-]{4,})/;
+    // 兜底③：连续字母数字串。必须是「像券码」的形态——含数字、且不是常见英文/商家词，
+    // 否则像 "Coupon"/"Code"/"星巴克" 这类词会被误当成券码填入。
+    const stop = /^(coupon|code|card|no|number|核销|兑换|提货|密码|序列|编号|单号|口令|星巴克|美团|麦当劳|肯德基|抖音|微信|支付宝)$/i;
+    const codeFallback = /([A-Za-z0-9-]{6,})/;
     const mf = t.match(codeFallback);
     if (mf) {
       const v = mf[1];
-      const bad = /^\d{4}$/.test(v) || /\d{4}[-/]\d{1,2}/.test(v);
-      if (!bad) code = v;
+      const bad = /^\d{4}$/.test(v) || /\d{4}[-/]\d{1,2}/.test(v) || /^\d{4}年/.test(v);
+      if (!bad && !stop.test(v) && /\d/.test(v)) code = v;
     }
   }
   fields.coupon_code = code;
@@ -133,7 +139,7 @@ async function recognize(imagePath) {
     const pending = worker.recognize(imagePath);
     const { data } = await Promise.race([pending, timeout]);
     const raw = (data.text || '').replace(/\r/g, '').trim();
-    return { raw, fields: parseFields(raw) };
+    return { raw, fields: parseFields(collapseSpacedCodes(raw)) };
   } finally {
     clearTimeout(timer);
     try { await worker.terminate(); } catch (_) {}
