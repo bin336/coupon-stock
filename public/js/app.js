@@ -545,6 +545,7 @@ function couponCard(c, isSoldScope) {
         <div><span class="k">过期</span> <span class="${expClass}">${escapeHtml(expText)}</span></div>
         <div><span class="k">成本</span> <span class="v">${fmtMoney(c.cost)}</span></div>
         <div><span class="k">所有人</span> <span class="v">${escapeHtml(c.owner_name)}</span></div>
+        ${c.platform ? `<div><span class="k">平台</span> <span class="v">${escapeHtml(c.platform)}</span></div>` : ''}
       </div>
     </div>
     ${c.note ? `<div class="note">备注：${escapeHtml(c.note)}</div>` : ''}
@@ -717,6 +718,10 @@ function openCouponModal(coupon) {
           </div>
         </div>
         <div class="field">
+          <label>平台</label>
+          <input name="platform" value="${escapeHtml(c.platform || '')}" placeholder="如：闲鱼 / 转转（选填）" />
+        </div>
+        <div class="field">
           <label>备注</label>
           <input name="note" value="${escapeHtml(c.note || '')}" placeholder="选填" />
         </div>
@@ -841,6 +846,7 @@ function rowInner() {
       <div class="field" style="margin:0"><label>成本</label><input name="cost" type="number" step="0.01" placeholder="0" /></div>
     </div>
     <div class="field" style="margin:0"><label>所有人</label><input name="owner_name" value="${escapeHtml(state.user ? state.user.display_name : '')}" /></div>
+    <div class="field" style="margin:0"><label>平台</label><input name="platform" placeholder="选填" /></div>
     <div class="field" style="margin:0"><label>备注</label><input name="note" placeholder="选填" /></div>`;
 }
 
@@ -974,6 +980,7 @@ function openBatchModal() {
         expiry_date: v('expiry_date'),
         cost: v('cost'),
         owner_name: v('owner_name'),
+        platform: v('platform'),
         note: v('note')
       };
     });

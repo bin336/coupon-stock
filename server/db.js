@@ -95,6 +95,7 @@ CREATE TABLE IF NOT EXISTS coupons (
   expiry_date TEXT,
   cost REAL NOT NULL DEFAULT 0,
   owner_name TEXT NOT NULL,
+  platform TEXT,
   owner_user_id INTEGER,
   image_filename TEXT,
   status TEXT NOT NULL DEFAULT 'unsold',
@@ -132,6 +133,9 @@ CREATE TABLE IF NOT EXISTS operation_log (
       }
       if (!cols.includes('settle_amount')) {
         _db.exec("ALTER TABLE coupons ADD COLUMN settle_amount REAL");
+      }
+      if (!cols.includes('platform')) {
+        _db.exec("ALTER TABLE coupons ADD COLUMN platform TEXT");
       }
       if (!cols.includes('sold_at')) {
         _db.exec("ALTER TABLE coupons ADD COLUMN sold_at TEXT");

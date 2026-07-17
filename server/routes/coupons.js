@@ -59,9 +59,9 @@ router.get('/', authMiddleware, (req, res) => {
     params.push(today);
   }
   if (q) {
-    sql += ' AND (merchant LIKE ? OR coupon_code LIKE ? OR owner_name LIKE ? OR note LIKE ?)';
+    sql += ' AND (merchant LIKE ? OR coupon_code LIKE ? OR owner_name LIKE ? OR platform LIKE ? OR note LIKE ?)';
     const like = '%' + q + '%';
-    params.push(like, like, like, like);
+    params.push(like, like, like, like, like);
   }
   if (owner) {
     sql += ' AND owner_name LIKE ?';
@@ -215,12 +215,13 @@ router.post('/', authMiddleware, upload.single('image'), (req, res) => {
   const cost = parseFloat(b.cost) || 0;
   const owner_name = (b.owner_name || '').toString().trim() || req.user.display_name;
   const note = (b.note || '').toString().trim();
+  const platform = (b.platform || '').toString().trim();
   const image_filename = req.file ? req.file.filename : null;
 
   const info = db.prepare(`INSERT INTO coupons
-    (merchant, amount, coupon_code, quantity, expiry_date, cost, owner_name, owner_user_id, image_filename, note, created_by)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
-    .run(merchant, amount, coupon_code, quantity, expiry_date, cost, owner_name, req.user.id, image_filename, note, req.user.id);
+    (merchant, amount, coupon_code, quantity, expiry_date, cost, owner_name, platform, owner_user_id, image_filename, note, created_by)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(merchant, amount, coupon_code, quantity, expiry_date, cost, owner_name, platform, req.user.id, image_filename, note, req.user.id);
   const row = db.prepare('SELECT * FROM coupons WHERE id = ?').get(info.lastInsertRowid);
   logOp(req, 'add_coupon', merchant, `面值¥${amount} ×${quantity}张 成本¥${cost} 所有人:${owner_name}`);
   res.json({ coupon: row });
@@ -239,8 +240,8 @@ router.post('/batch', authMiddleware, uploadArray, (req, res) => {
   const created = [];
   const errors = [];
   const insert = db.prepare(`INSERT INTO coupons
-    (merchant, amount, coupon_code, quantity, expiry_date, cost, owner_name, owner_user_id, image_filename, note, created_by)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?)`);
+    (merchant, amount, coupon_code, quantity, expiry_date, cost, owner_name, platform, owner_user_id, image_filename, note, created_by)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`);
   const tx = db.transaction(() => {
     files.forEach((file, i) => {
       const b = items[i] || {};
@@ -252,9 +253,10 @@ router.post('/batch', authMiddleware, uploadArray, (req, res) => {
       const expiry_date = b.expiry_date ? b.expiry_date.toString().trim() : null;
       const cost = parseFloat(b.cost) || 0;
       const owner_name = (b.owner_name || '').toString().trim() || req.user.display_name;
+      const platform = (b.platform || '').toString().trim();
       const note = (b.note || '').toString().trim();
       try {
-        const info = insert.run(merchant, amount, coupon_code, quantity, expiry_date, cost, owner_name, req.user.id, file.filename, note, req.user.id);
+        const info = insert.run(merchant, amount, coupon_code, quantity, expiry_date, cost, owner_name, platform, req.user.id, file.filename, note, req.user.id);
         created.push(info.lastInsertRowid);
       } catch (e) {
         errors.push({ index: i, file: file.originalname, error: '入库失败：' + e.message });
@@ -290,13 +292,14 @@ router.put('/:id', authMiddleware, upload.single('image'), (req, res) => {
   const cost = b.cost !== undefined ? (parseFloat(b.cost) || 0) : row.cost;
   const owner_name = b.owner_name !== undefined ? (b.owner_name.toString().trim() || row.owner_name) : row.owner_name;
   const note = b.note !== undefined ? b.note.toString().trim() : row.note;
+  const platform = b.platform !== undefined ? b.platform.toString().trim() : row.platform;
   let image_filename = row.image_filename;
   if (req.file) image_filename = req.file.filename;
 
   db.prepare(`UPDATE coupons SET
-    merchant=?, amount=?, coupon_code=?, quantity=?, expiry_date=?, cost=?, owner_name=?, note=?, image_filename=?, updated_at=datetime('now')
+    merchant=?, amount=?, coupon_code=?, quantity=?, expiry_date=?, cost=?, owner_name=?, platform=?, note=?, image_filename=?, updated_at=datetime('now')
     WHERE id=?`)
-    .run(merchant, amount, coupon_code, quantity, expiry_date, cost, owner_name, note, image_filename, row.id);
+    .run(merchant, amount, coupon_code, quantity, expiry_date, cost, owner_name, platform, note, image_filename, row.id);
   const updated = db.prepare('SELECT * FROM coupons WHERE id = ?').get(row.id);
   logOp(req, 'edit_coupon', merchant, `编辑券 #${row.id}`);
   res.json({ coupon: updated });
