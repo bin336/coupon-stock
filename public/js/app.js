@@ -724,6 +724,7 @@ function openCouponModal(coupon) {
           <div class="field">
             <label>券号</label>
             <input name="coupon_code" value="${escapeHtml(c.coupon_code || '')}" placeholder="选填" />
+            <div class="ocr-rawhint" id="coupon-rawhint" style="display:none"></div>
           </div>
           <div class="field">
             <label>过期时间</label>
@@ -756,10 +757,6 @@ function openCouponModal(coupon) {
           </div>
         </div>
         <div id="ocr-status" class="ocr-status" style="display:none"></div>
-        <details class="ocr-raw" id="ocr-raw-wrap" style="display:none">
-          <summary>识别原文（核对用，可照着改）</summary>
-          <pre id="ocr-raw"></pre>
-        </details>
         <div class="modal-actions">
           <button type="button" class="btn ghost" data-close="1">取消</button>
           <button type="submit" class="btn primary">${isEdit ? '保存修改' : '入库'}</button>
@@ -770,8 +767,7 @@ function openCouponModal(coupon) {
 
   const input = document.getElementById('img-input');
   const ocrStatus = document.getElementById('ocr-status');
-  const rawWrap = document.getElementById('ocr-raw-wrap');
-  const rawEl = document.getElementById('ocr-raw');
+  const couponRaw = document.getElementById('coupon-rawhint');
 
   function showPreview(src) {
     document.getElementById('img-preview').innerHTML = `<img src="${src}" />`;
@@ -795,7 +791,7 @@ function openCouponModal(coupon) {
     ocrStatus.style.display = 'block';
     ocrStatus.className = 'ocr-status loading';
     ocrStatus.textContent = '🤖 正在识别截图，请稍候…';
-    rawWrap.style.display = 'none';
+    if (couponRaw) couponRaw.style.display = 'none';
     try {
       const fd = new FormData();
       fd.append('image', file);
@@ -806,7 +802,7 @@ function openCouponModal(coupon) {
       ['amount', 'coupon_code', 'quantity', 'expiry_date'].forEach(n => {
         if (f[n] !== null && f[n] !== undefined && f[n] !== '') { setOcrField(n, f[n]); filled.push(names[n]); }
       });
-      if (data.raw) { rawEl.textContent = data.raw; rawWrap.style.display = 'block'; }
+      if (data.raw && couponRaw) { couponRaw.textContent = '识别原文（照着抄券号）：\n' + data.raw; couponRaw.style.display = 'block'; }
       if (filled.length) {
         ocrStatus.className = 'ocr-status ok';
         ocrStatus.innerHTML = `🤖 已自动识别 <b>${filled.length}</b> 项（${filled.join('、')}），<b>请逐项核对</b>后再入库`;

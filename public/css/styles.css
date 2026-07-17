@@ -248,7 +248,7 @@ body {
 .batch-row .br-status.ok { color: var(--ok); }
 .batch-row .br-status.warn { color: var(--warn); }
 .batch-row .br-del { border: none; background: #fff0ee; color: var(--warn); border-radius: 8px; width: 28px; height: 28px; font-size: 14px; cursor: pointer; flex: 0 0 auto; }
-.ocr-rawhint { font-size: 11px; color: var(--muted); margin-top: 4px; word-break: break-all; background: #faf7f4; border-radius: 6px; padding: 4px 6px; }
+.ocr-rawhint { font-size: 11px; color: var(--muted); margin-top: 4px; word-break: break-all; white-space: pre-wrap; background: #faf7f4; border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; max-height: 140px; overflow: auto; line-height: 1.55; }
 
 /* ---------- 报表 / 日志 工具栏 ---------- */
 .report-toolbar, .log-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
