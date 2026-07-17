@@ -11,6 +11,7 @@ const state = {
   settlementView: 'mine',  // mine(我的) | all(全部)
   report: false,      // 是否处于售出/利润报表视图
   logs: false,        // 是否处于操作日志视图
+  rankings: false,    // 是否处于数据报表（三大排行）视图
   q: '',
   coupons: [],
   stats: {},
@@ -142,6 +143,7 @@ function render() {
   renderApp();
   if (state.report) { loadReport(); }
   else if (state.logs) { loadLogs(); }
+  else if (state.rankings) { loadRankings(); }
   else { loadData(); loadUsers(); }
 }
 
@@ -174,10 +176,10 @@ function renderApp() {
       <div class="value">${s.expiring_soon || 0}</div>
       <div class="sub">需尽快售出</div>
     </div>
-    <div class="stat">
+    <div class="stat clickable" id="stat-sold" style="cursor:pointer">
       <div class="label">至今我们已售出</div>
-      <div class="value">${s.sold || 0}</div>
-      <div class="sub">张券</div>
+      <div class="value">${s.sold || 0} <small>张</small></div>
+      <div class="sub">面值 ${fmtMoney(s.sold_face_value)} · 点此看报表</div>
     </div>
   </div>
 
@@ -185,7 +187,7 @@ function renderApp() {
 
   <div class="list" id="list"></div>
 
-  ${state.report || state.logs || state.settlement ? '' : `
+  ${state.report || state.logs || state.settlement || state.rankings ? '' : `
   <div class="fab-backdrop" id="fab-backdrop" style="display:none"></div>
   <div class="fab-menu" id="fab-menu" style="display:none">
     <button class="fab-item" id="fab-batch">批量录入</button>
@@ -197,11 +199,15 @@ function renderApp() {
   const bs = document.getElementById('btn-settings');
   if (bs) bs.onclick = openSettings;
 
-  // 报表 / 日志 / 结算 视图：工具栏与列表独立渲染，不再绑定默认搜索/筛选
+  // 报表 / 日志 / 结算 / 排行 视图：工具栏与列表独立渲染，不再绑定默认搜索/筛选
   if (state.report) { bindReportToolbar(); loadReport(); return; }
   if (state.logs) { bindLogToolbar(); loadLogs(); return; }
   if (state.settlement) {
     bindSettlementToolbar();
+    return;
+  }
+  if (state.rankings) {
+    bindRankingsToolbar();
     return;
   }
 
@@ -251,6 +257,8 @@ function renderApp() {
 
   const statPending = document.getElementById('stat-pending');
   if (statPending) statPending.onclick = openReport;
+  const statSold = document.getElementById('stat-sold');
+  if (statSold) statSold.onclick = openRankings;
 
   renderList();
   renderRecentSearches();
@@ -258,6 +266,12 @@ function renderApp() {
 
 /* ---------- 工具栏（按当前视图切换） ---------- */
 function getToolbar() {
+  if (state.rankings) {
+    return `<div class="toolbar">
+      <button class="btn ghost" id="btn-back">← 返回</button>
+      <div class="tb-title">📊 数据报表</div>
+    </div>`;
+  }
   if (state.settlement) {
     const v = state.settlementView;
     return `<div class="toolbar" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -385,6 +399,67 @@ function renderReport(data) {
   </div>`;
 }
 
+/* ---------- 数据报表（三大排行） ---------- */
+async function openRankings() {
+  state.rankings = true; state.report = false; state.logs = false; state.settlement = false; state.scope = 'default';
+  renderApp(); await loadRankings();
+}
+function bindRankingsToolbar() {
+  const back = document.getElementById('btn-back');
+  if (back) back.onclick = () => { state.rankings = false; renderApp(); loadData(); loadUsers(); };
+}
+async function loadRankings() {
+  try {
+    const data = await api('GET', '/rankings');
+    renderRankings(data);
+  } catch (e) { toast(e.message); }
+}
+
+// 纯 CSS 横向条形图：items 已按值降序，返回每行 HTML（无第三方依赖，离线可用）
+function barRows(items, getValue, format, subFn) {
+  if (!items || !items.length) return '<div class="empty">暂无数据</div>';
+  const max = Math.max(...items.map(getValue));
+  if (max <= 0) return '<div class="empty">暂无数据</div>';
+  return items.map((it, i) => {
+    const v = getValue(it);
+    const pct = Math.max(3, Math.round(v / max * 100));
+    const sub = subFn ? `<span class="rank-sub">${subFn(it)}</span>` : '';
+    const noCls = i < 3 ? 'rank-' + (i + 1) : 'rank-n';
+    return `<div class="rank-row">
+      <div class="rank-no ${noCls}">${i + 1}</div>
+      <div class="rank-body">
+        <div class="rank-top"><span class="rank-name">${escapeHtml(it.name)} ${sub}</span><span class="rank-val">${format(v)}</span></div>
+        <div class="rank-bar"><div class="rank-fill" style="width:${pct}%"></div></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderRankings(data) {
+  const list = document.getElementById('list');
+  if (!list) return;
+  const d = data || {};
+  const money = v => fmtMoney(v);
+  const sales = (d.sales || []).map(s => ({ name: s.name, v: s.amount, count: s.count }));
+  const hoard = (d.hoarder || []).map(h => ({ name: h.name, v: h.value, qty: h.quantity, count: h.count }));
+  const work = (d.workhorse || []).map(w => ({ name: w.name, v: w.count }));
+  list.innerHTML = `
+    <div class="rank-wrap">
+      <div class="rank-card">
+        <div class="rank-head">🏆 销售业绩排行 <small>按售出结算金额</small></div>
+        ${barRows(sales, it => it.v, money, it => `售出 ${it.count} 张`)}
+      </div>
+      <div class="rank-card">
+        <div class="rank-head">🏠 囤券地主排行 <small>按未过期在售券面值</small></div>
+        ${barRows(hoard, it => it.v, money, it => `${it.qty} 张在售`)}
+      </div>
+      <div class="rank-card">
+        <div class="rank-head">🐎 牛马排行 <small>按操作次数</small></div>
+        ${barRows(work, it => it.v, v => v + ' 次', null)}
+      </div>
+    </div>`;
+}
+
 /* ---------- 设置（汇总 日志 / 用户管理 入口） ---------- */
 function openSettings() {
   $modal.innerHTML = `
@@ -501,7 +576,7 @@ function renderStats() {
     { sel: '.stat:nth-child(1) .value', val: s.unsold_unexpired || 0, sub: '.stat:nth-child(1) .sub', subText: '张可售券 · 成本 ' + fmtMoney(s.cost || 0) },
     { sel: '.stat:nth-child(2) .value', val: s.sold_unsettled || 0, sub: '.stat:nth-child(2) .sub', subText: '张未结算' },
     { sel: '.stat:nth-child(3) .value', val: s.expiring_soon || 0, sub: '.stat:nth-child(3) .sub', subText: '需尽快售出' },
-    { sel: '.stat:nth-child(4) .value', val: s.sold || 0, sub: '.stat:nth-child(4) .sub', subText: '张券' }
+    { sel: '.stat:nth-child(4) .value', val: s.sold || 0, sub: '.stat:nth-child(4) .sub', subText: '面值 ' + fmtMoney(s.sold_face_value || 0) + ' · 点此看报表' }
   ];
   const container = document.querySelector('.stats');
   if (!container) return;

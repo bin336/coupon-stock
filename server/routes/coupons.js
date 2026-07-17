@@ -101,6 +101,7 @@ router.get('/stats', authMiddleware, (req, res) => {
   const unsoldUnexpired = all.filter(c => c.status === 'unsold' && (!c.expiry_date || c.expiry_date >= today));
   const sold = all.filter(c => c.status === 'sold');
   const soldUnsettled = sold.filter(c => !c.settled);
+  const soldFaceValue = sold.reduce((s, c) => s + (c.amount || 0) * (c.quantity || 1), 0);
   const expiredUnsold = all.filter(c => c.status === 'unsold' && c.expiry_date && c.expiry_date < today);
   const faceValue = unsoldUnexpired.reduce((s, c) => s + (c.amount || 0) * (c.quantity || 1), 0);
   const cost = unsoldUnexpired.reduce((s, c) => s + (c.cost || 0), 0);
@@ -118,6 +119,7 @@ router.get('/stats', authMiddleware, (req, res) => {
     cost: Math.round(cost * 100) / 100,
     potential: Math.round(potential * 100) / 100,
     sold: sold.length,
+    sold_face_value: Math.round(soldFaceValue * 100) / 100,
     sold_unsettled: soldUnsettled.length,
     expiring_soon: expiringSoon,
     expired_unsold: expiredUnsold.length

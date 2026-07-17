@@ -357,3 +357,25 @@ body {
 .log-table .tag-unmark_sold, .log-table .tag-unsettle { background: #f3f4f7; color: #6b7280; }
 .log-table .tag-add_user, .log-table .tag-delete_user { background: #f3e8ff; color: #7c3aed; }
 .log-table .tag-reset_password { background: #fff7ed; color: #b45309; }
+
+/* ---------- 数据报表（三大排行） ---------- */
+.tb-title { font-size: 16px; font-weight: 700; }
+.stat.clickable { transition: transform .12s ease, box-shadow .12s ease; }
+.stat.clickable:active { transform: scale(.97); }
+.stat.clickable:hover { box-shadow: 0 6px 18px rgba(255,90,31,.18); }
+.rank-wrap { display: flex; flex-direction: column; gap: 14px; padding: 4px 0 8px; }
+.rank-card { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 14px 14px 8px; box-shadow: 0 2px 8px rgba(20,20,40,.04); }
+.rank-head { font-size: 15px; font-weight: 700; margin-bottom: 10px; }
+.rank-head small { font-weight: 400; color: var(--muted); font-size: 12px; margin-left: 6px; }
+.rank-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; }
+.rank-no { flex: 0 0 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; background: #f0f1f4; color: #6b7280; }
+.rank-no.rank-1 { background: linear-gradient(135deg,#ffd166,#ff9f1c); color: #fff; }
+.rank-no.rank-2 { background: linear-gradient(135deg,#d7e3f4,#a9c0e0); color: #fff; }
+.rank-no.rank-3 { background: linear-gradient(135deg,#f0b99a,#e08e5a); color: #fff; }
+.rank-body { flex: 1; min-width: 0; }
+.rank-top { display: flex; justify-content: space-between; align-items: baseline; font-size: 14px; margin-bottom: 5px; gap: 8px; }
+.rank-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rank-sub { font-weight: 400; color: var(--muted); font-size: 12px; margin-left: 6px; }
+.rank-val { color: var(--accent); font-weight: 700; white-space: nowrap; }
+.rank-bar { height: 8px; background: #f1f2f5; border-radius: 999px; overflow: hidden; }
+.rank-fill { height: 100%; border-radius: 999px; background: var(--accent-grad); transition: width .5s ease; }

@@ -17,6 +17,7 @@ const db = require('./db'); // sql.js 异步初始化
 const authRoutes = require('./routes/auth');
 const couponRoutes = require('./routes/coupons');
 const ocrRoutes = require('./routes/ocr');
+const rankingRoutes = require('./routes/rankings');
 const { authMiddleware, JWT_SECRET } = require('./middleware/auth');
 const jwt = require('jsonwebtoken');
 
@@ -37,6 +38,7 @@ async function main() {
   app.use('/api/auth', authRoutes);
   app.use('/api/coupons', couponRoutes);
   app.use('/api/ocr', ocrRoutes);
+  app.use('/api/rankings', rankingRoutes);
 
   // 受保护的图片访问（登录后才能看二维码截图；支持 ?token= 以便 <img> 直接加载）
   app.get('/uploads/:file', (req, res) => {
