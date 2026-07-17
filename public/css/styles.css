@@ -236,6 +236,14 @@ body {
 .ocr-status.loading { background: #fff7ed; color: #b45309; }
 .ocr-status.ok { background: #eaf7f0; color: #1faa6b; }
 .ocr-status.warn { background: #fff0ee; color: var(--warn); }
+.ocr-note-warn { margin-top: 6px; font-weight: 600; color: var(--warn); }
+/* 过期时间必填空值时高亮字段，提示用户补填 */
+#expiry-input.need-fill {
+  border-color: var(--warn) !important;
+  box-shadow: 0 0 0 3px rgba(255, 77, 28, .14);
+  animation: needfill 1.2s ease-in-out infinite;
+}
+@keyframes needfill { 0%, 100% { box-shadow: 0 0 0 3px rgba(255, 77, 28, .14); } 50% { box-shadow: 0 0 0 5px rgba(255, 77, 28, .26); } }
 .ocr-tag {
   display: inline-block; margin-left: 6px; font-size: 10px; line-height: 1;
   background: var(--accent); color: #fff; border-radius: 4px; padding: 2px 5px; vertical-align: middle;

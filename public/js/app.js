@@ -883,8 +883,8 @@ function openCouponModal(coupon) {
             <div class="ocr-rawhint" id="coupon-rawhint" style="display:none"></div>
           </div>
           <div class="field">
-            <label>过期时间</label>
-            <input name="expiry_date" type="date" value="${escapeHtml(c.expiry_date || '')}" min="${today}" />
+            <label>过期时间 <span class="req">*</span></label>
+            <input name="expiry_date" id="expiry-input" type="date" value="${escapeHtml(c.expiry_date || '')}" min="${today}" required />
           </div>
         </div>
         <div class="two">
@@ -924,6 +924,24 @@ function openCouponModal(coupon) {
   const input = document.getElementById('img-input');
   const ocrStatus = document.getElementById('ocr-status');
   const couponRaw = document.getElementById('coupon-rawhint');
+
+  // 过期时间为必填：没有无限期的券。OCR 没识别到 / 用户未填时，高亮字段并定制校验提示。
+  const expiryInput = document.getElementById('expiry-input');
+  const EXPIRY_MSG = '请填写过期时间（没有无限期的券）';
+  function markExpiryNeeded() {
+    if (expiryInput && !expiryInput.value) {
+      expiryInput.setCustomValidity(EXPIRY_MSG);
+      expiryInput.classList.add('need-fill');
+    }
+  }
+  function clearExpiryNeeded() {
+    if (expiryInput) { expiryInput.setCustomValidity(''); expiryInput.classList.remove('need-fill'); }
+  }
+  if (expiryInput) {
+    expiryInput.addEventListener('input', clearExpiryNeeded);
+    expiryInput.addEventListener('change', clearExpiryNeeded);
+    markExpiryNeeded(); // 新券或编辑时为空 → 标记为必填
+  }
 
   function showPreview(src) {
     document.getElementById('img-preview').innerHTML = `<img src="${src}" />`;
@@ -965,6 +983,14 @@ function openCouponModal(coupon) {
       } else {
         ocrStatus.className = 'ocr-status warn';
         ocrStatus.textContent = data.error ? '未能识别，请手动填写各项' : '未识别出关键信息，请手动填写';
+      }
+      // 过期时间未识别到 → 主动提示并高亮该字段（券都有有效期，没有无限期的券）
+      if (!(f.expiry_date != null && f.expiry_date !== '')) {
+        markExpiryNeeded();
+        const note = document.createElement('div');
+        note.className = 'ocr-note-warn';
+        note.textContent = '⚠️ 未识别到过期时间，请务必手动填写（券都有有效期，没有无限期的券）';
+        ocrStatus.appendChild(note);
       }
     } catch (e) {
       ocrStatus.className = 'ocr-status warn';
@@ -1017,7 +1043,7 @@ function rowInner() {
       <div class="field" style="margin:0"><label>张数</label><input name="quantity" type="number" min="1" value="1" /></div>
     </div>
     <div class="two">
-      <div class="field" style="margin:0"><label>过期时间</label><input name="expiry_date" type="date" /></div>
+      <div class="field" style="margin:0"><label>过期时间 <span class="req">*</span></label><input name="expiry_date" type="date" required /></div>
       <div class="field" style="margin:0"><label>成本</label><input name="cost" type="number" step="0.01" placeholder="0" /></div>
     </div>
     <div class="field" style="margin:0"><label>所有人</label><input name="owner_name" value="${escapeHtml(state.user ? state.user.display_name : '')}" /></div>
