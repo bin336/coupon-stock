@@ -12,6 +12,7 @@ const state = {
   report: false,      // 是否处于售出/利润报表视图
   logs: false,        // 是否处于操作日志视图
   rankings: false,    // 是否处于数据报表（三大排行）视图
+  expiring: false,    // 是否处于 7天内到期 视图
   q: '',
   coupons: [],
   stats: {},
@@ -132,6 +133,11 @@ async function loadData() {
     renderList();
   }
 }
+// 列表内发生增删改后刷新：到期视图须重新走 openExpiring 重算「7天内」筛选，其余视图走 loadData
+async function refreshList() {
+  if (state.expiring) { await openExpiring(); return; }
+  await loadData();
+}
 async function loadUsers() {
   if (state.user.role !== 'admin') return;
   const data = await api('GET', '/auth/users');
@@ -171,10 +177,10 @@ function renderApp() {
       <div class="value">${s.sold_unsettled || 0}</div>
       <div class="sub">张未结算 · 点此看报表</div>
     </div>
-    <div class="stat alert">
+    <div class="stat alert clickable" id="stat-expiring" style="cursor:pointer">
       <div class="label">7天内到期</div>
       <div class="value">${s.expiring_soon || 0}</div>
-      <div class="sub">需尽快售出</div>
+      <div class="sub">点此查看 · 需尽快售出</div>
     </div>
     <div class="stat clickable" id="stat-sold" style="cursor:pointer">
       <div class="label">至今我们已售出</div>
@@ -193,9 +199,10 @@ function renderApp() {
     <button class="nav-item" data-nav="rankings"><span class="nav-ico">📊</span><span>数据</span></button>
     <button class="nav-item" data-nav="settlement"><span class="nav-ico">💰</span><span>结算</span></button>
     <button class="nav-item" data-nav="logs"><span class="nav-ico">📜</span><span>日志</span></button>
+    <button class="nav-item" data-nav="expiring"><span class="nav-ico">⏰</span><span>到期</span></button>
   </nav>
 
-  ${state.report || state.logs || state.settlement || state.rankings ? '' : `
+  ${state.report || state.logs || state.settlement || state.rankings || state.expiring ? '' : `
   <div class="fab-backdrop" id="fab-backdrop" style="display:none"></div>
   <div class="fab-menu" id="fab-menu" style="display:none">
     <button class="fab-item" id="fab-batch">批量录入</button>
@@ -220,6 +227,10 @@ function renderApp() {
   }
   if (state.rankings) {
     bindRankingsToolbar();
+    return;
+  }
+  if (state.expiring) {
+    bindExpiringToolbar();
     return;
   }
 
@@ -277,6 +288,8 @@ function bindStatCards() {
   if (statPending) statPending.onclick = openReport;
   const statSold = document.getElementById('stat-sold');
   if (statSold) statSold.onclick = openRankings;
+  const statExpiring = document.getElementById('stat-expiring');
+  if (statExpiring) statExpiring.onclick = openExpiring;
 }
 
 /* ---------- 底部导航：跨页面一键切换 ---------- */
@@ -285,6 +298,7 @@ function activeNav() {
   if (state.report) return 'report';
   if (state.settlement) return 'settlement';
   if (state.logs) return 'logs';
+  if (state.expiring) return 'expiring';
   return 'home';
 }
 function bindBottomNav() {
@@ -298,12 +312,13 @@ function bindBottomNav() {
       else if (v === 'rankings') openRankings();
       else if (v === 'settlement') openSettlement();
       else if (v === 'logs') openLogs();
+      else if (v === 'expiring') openExpiring();
     };
   });
   nav.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.nav === activeNav()));
 }
 async function goHome() {
-  state.report = false; state.logs = false; state.settlement = false; state.rankings = false;
+  state.report = false; state.logs = false; state.settlement = false; state.rankings = false; state.expiring = false;
   state.scope = 'default'; state.q = '';
   renderApp(); loadData(); loadUsers();
 }
@@ -314,6 +329,13 @@ function getToolbar() {
     return `<div class="toolbar">
       <button class="btn ghost" id="btn-back">← 返回</button>
       <div class="tb-title">📊 数据报表</div>
+    </div>`;
+  }
+  if (state.expiring) {
+    return `<div class="toolbar">
+      <button class="btn ghost" id="btn-back">← 返回</button>
+      <div class="tb-title">⏰ 7天内到期</div>
+      <span class="gh-sub" id="exp-count"></span>
     </div>`;
   }
   if (state.settlement) {
@@ -451,6 +473,35 @@ async function openRankings() {
 function bindRankingsToolbar() {
   const back = document.getElementById('btn-back');
   if (back) back.onclick = () => { state.rankings = false; renderApp(); loadData(); loadUsers(); };
+}
+
+/* ---------- 7天内到期视图 ---------- */
+// 今天 +7 天，返回 YYYY-MM-DD（与后端 stats 的 soon 计算口径一致）
+function soonDate() {
+  const t = todayLocal();
+  const [y, m, d] = t.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + 7);
+  const mm = String(dt.getMonth() + 1).padStart(2, '0');
+  const dd = String(dt.getDate()).padStart(2, '0');
+  return dt.getFullYear() + '-' + mm + '-' + dd;
+}
+async function openExpiring() {
+  state.report = false; state.logs = false; state.settlement = false; state.rankings = false; state.expiring = true;
+  state.scope = 'default'; state.q = '';
+  renderApp();
+  try {
+    const data = await api('GET', '/coupons?status=unsold&expired=0');
+    const soon = soonDate();
+    state.coupons = (data.coupons || []).filter(c => c.expiry_date && c.expiry_date <= soon);
+    renderList();
+    const c = document.getElementById('exp-count');
+    if (c) c.textContent = state.coupons.length + ' 张';
+  } catch (e) { toast(e.message); }
+}
+function bindExpiringToolbar() {
+  const back = document.getElementById('btn-back');
+  if (back) back.onclick = goHome;
 }
 async function loadRankings() {
   try {
@@ -730,7 +781,7 @@ function bindListEvents() {
         if (!c) return;
         if (c.status === 'sold') {
           // 取消售出：直接调用
-          try { await api('POST', '/coupons/' + id + '/sold'); toast('已取消售出'); loadData(); }
+          try { await api('POST', '/coupons/' + id + '/sold'); toast('已取消售出'); refreshList(); }
           catch (e) { toast(e.message); }
         } else {
           // 标记售出：弹框填售出价
@@ -740,7 +791,7 @@ function bindListEvents() {
         const c = state.coupons.find(x => x.id == id);
         if (!c) return;
         if (c.settled) {
-          try { await api('POST', '/coupons/' + id + '/settle'); toast('已取消结算'); loadData(); }
+          try { await api('POST', '/coupons/' + id + '/settle'); toast('已取消结算'); refreshList(); }
           catch (e) { toast(e.message); }
         } else {
           openSettleModal(c);
@@ -753,7 +804,7 @@ function bindListEvents() {
         if (c) shareToXianyu(c.image_filename, c);
       } else if (act === 'del') {
         if (!confirm('确定删除这张券？此操作不可恢复。')) return;
-        try { await api('DELETE', '/coupons/' + id); toast('已删除'); loadData(); }
+        try { await api('DELETE', '/coupons/' + id); toast('已删除'); refreshList(); }
         catch (e) { toast(e.message); }
       }
     };
@@ -917,7 +968,7 @@ function openSoldModal(c) {
       await api('POST', '/coupons/' + c.id + '/sold', { sold_price: v });
       toast('已标记售出');
       closeModal();
-      loadData();
+      refreshList();
     } catch (e2) { toast(e2.message); }
   });
   bindClose();
@@ -964,7 +1015,7 @@ function openSettleModal(c) {
       await api('POST', '/coupons/' + c.id + '/settle', hasPrice ? {} : { sold_price: v });
       toast('已结算');
       closeModal();
-      loadData();
+      refreshList();
     } catch (e2) { toast(e2.message); }
   });
   bindClose();
