@@ -187,6 +187,14 @@ function renderApp() {
 
   <div class="list" id="list"></div>
 
+  <nav class="bottom-nav" id="bottom-nav">
+    <button class="nav-item" data-nav="home"><span class="nav-ico">🏠</span><span>首页</span></button>
+    <button class="nav-item" data-nav="report"><span class="nav-ico">📋</span><span>报表</span></button>
+    <button class="nav-item" data-nav="rankings"><span class="nav-ico">📊</span><span>数据</span></button>
+    <button class="nav-item" data-nav="settlement"><span class="nav-ico">💰</span><span>结算</span></button>
+    <button class="nav-item" data-nav="logs"><span class="nav-ico">📜</span><span>日志</span></button>
+  </nav>
+
   ${state.report || state.logs || state.settlement || state.rankings ? '' : `
   <div class="fab-backdrop" id="fab-backdrop" style="display:none"></div>
   <div class="fab-menu" id="fab-menu" style="display:none">
@@ -198,6 +206,10 @@ function renderApp() {
   document.getElementById('btn-logout').onclick = logout;
   const bs = document.getElementById('btn-settings');
   if (bs) bs.onclick = openSettings;
+
+  // 统计卡片与底部导航在所有视图（含子页面）都保持可点击/可切换
+  bindStatCards();
+  bindBottomNav();
 
   // 报表 / 日志 / 结算 / 排行 视图：工具栏与列表独立渲染，不再绑定默认搜索/筛选
   if (state.report) { bindReportToolbar(); loadReport(); return; }
@@ -255,13 +267,45 @@ function renderApp() {
     if (fabBack) fabBack.onclick = closeFab;
   }
 
+  renderList();
+  renderRecentSearches();
+}
+
+/* ---------- 统计卡片：跨页面常驻可点击 ---------- */
+function bindStatCards() {
   const statPending = document.getElementById('stat-pending');
   if (statPending) statPending.onclick = openReport;
   const statSold = document.getElementById('stat-sold');
   if (statSold) statSold.onclick = openRankings;
+}
 
-  renderList();
-  renderRecentSearches();
+/* ---------- 底部导航：跨页面一键切换 ---------- */
+function activeNav() {
+  if (state.rankings) return 'rankings';
+  if (state.report) return 'report';
+  if (state.settlement) return 'settlement';
+  if (state.logs) return 'logs';
+  return 'home';
+}
+function bindBottomNav() {
+  const nav = document.getElementById('bottom-nav');
+  if (!nav) return;
+  nav.querySelectorAll('.nav-item').forEach(b => {
+    b.onclick = () => {
+      const v = b.dataset.nav;
+      if (v === 'home') goHome();
+      else if (v === 'report') openReport();
+      else if (v === 'rankings') openRankings();
+      else if (v === 'settlement') openSettlement();
+      else if (v === 'logs') openLogs();
+    };
+  });
+  nav.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.nav === activeNav()));
+}
+async function goHome() {
+  state.report = false; state.logs = false; state.settlement = false; state.rankings = false;
+  state.scope = 'default'; state.q = '';
+  renderApp(); loadData(); loadUsers();
 }
 
 /* ---------- 工具栏（按当前视图切换） ---------- */
@@ -326,7 +370,7 @@ function getToolbar() {
 
 /* ---------- 售出 / 利润报表 ---------- */
 async function openReport() {
-  state.report = true; state.logs = false; state.settlement = false; state.scope = 'default';
+  state.report = true; state.rankings = false; state.logs = false; state.settlement = false; state.scope = 'default';
   renderApp(); await loadReport();
 }
 function bindReportToolbar() {
@@ -488,7 +532,7 @@ function openSettings() {
 
 /* ---------- 操作日志 ---------- */
 async function openLogs() {
-  state.logs = true; state.report = false; state.settlement = false;
+  state.logs = true; state.report = false; state.rankings = false; state.settlement = false;
   renderApp(); await loadLogs();
 }
 function bindLogToolbar() {
@@ -727,7 +771,7 @@ function bindListEvents() {
 
 /* ---------- 结算模块 ---------- */
 async function openSettlement() {
-  state.report = false; state.logs = false;
+  state.report = false; state.logs = false; state.rankings = false;
   state.scope = 'sold';
   state.q = '';
   state.settlement = true;
