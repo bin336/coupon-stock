@@ -126,20 +126,15 @@ router.get('/stats', authMiddleware, (req, res) => {
   });
 });
 
-// 记录一次搜索（供「所有用户共享的近期搜索」使用）
-router.post('/search-log', authMiddleware, (req, res) => {
-  const term = ((req.body && req.body.term) || '').trim();
-  if (!term) return res.json({ ok: true });
-  db.prepare('INSERT INTO search_log (term, user_id) VALUES (?, ?)').run(term, req.user.id);
-  res.json({ ok: true });
-});
-
-// 所有用户搜索频次最高的词（团队共享快捷词）
-router.get('/recent-searches', authMiddleware, (req, res) => {
+// 热门券商家：按商家名在库存中的出现频次排序，取前 N（供首页「热门券商家」快捷筛选）
+router.get('/popular-merchants', authMiddleware, (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit) || 8, 20);
   const rows = db.prepare(
-    'SELECT term FROM search_log GROUP BY term ORDER BY COUNT(*) DESC, MAX(created_at) DESC LIMIT 8'
-  ).all();
-  res.json({ terms: rows.map(r => r.term) });
+    `SELECT merchant FROM coupons
+     WHERE merchant IS NOT NULL AND merchant <> ''
+     GROUP BY merchant ORDER BY COUNT(*) DESC, MAX(id) DESC LIMIT ?`
+  ).all(limit);
+  res.json({ merchants: rows.map(r => r.merchant) });
 });
 
 // 售出 / 利润报表：按「所有人」分组，支持时间段（sold_at）与所有人筛选。仅管理员。

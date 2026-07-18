@@ -240,8 +240,6 @@ function renderApp() {
     clearTimeout(st);
     st = setTimeout(() => {
       state.q = e.target.value;
-      const q = state.q.trim();
-      if (q.length >= 1) { api('POST', '/coupons/search-log', { term: q }).catch(() => {}); }
       loadData();
     }, 250);
   });
@@ -642,19 +640,19 @@ function renderLogs(data) {
   </div>`;
 }
 
-/* ---------- 近期搜索（服务端共享：所有用户搜索频次最高的词，点击即搜） ---------- */
+/* ---------- 热门券商家（库存中出现频次最高的商家名，点击即按商家筛选） ---------- */
 async function renderRecentSearches() {
   const box = document.getElementById('recent-searches');
   if (!box) return;
-  let terms = [];
+  let merchants = [];
   try {
-    const data = await api('GET', '/coupons/recent-searches');
-    terms = data.terms || [];
-  } catch (e) { terms = []; }
-  if (!terms.length) { box.innerHTML = ''; return; }
+    const data = await api('GET', '/coupons/popular-merchants?limit=8');
+    merchants = data.merchants || [];
+  } catch (e) { merchants = []; }
+  if (!merchants.length) { box.innerHTML = ''; return; }
   box.innerHTML =
-    `<span class="recent-label">大家都在搜</span>` +
-    terms.map(t => `<span class="recent-tag" data-term="${escapeHtml(t)}">${escapeHtml(t)}</span>`).join('');
+    `<span class="recent-label">热门券商家</span>` +
+    merchants.map(m => `<span class="recent-tag" data-term="${escapeHtml(m)}">${escapeHtml(m)}</span>`).join('');
   box.querySelectorAll('.recent-tag').forEach(el => el.onclick = () => {
     const term = el.dataset.term;
     const s = document.getElementById('search');
