@@ -651,7 +651,7 @@ async function renderRecentSearches() {
   } catch (e) { merchants = []; }
   if (!merchants.length) { box.innerHTML = ''; return; }
   box.innerHTML =
-    `<span class="recent-label">热门券商家</span>` +
+    `<span class="recent-label">热门</span>` +
     merchants.map(m => `<span class="recent-tag" data-term="${escapeHtml(m)}">${escapeHtml(m)}</span>`).join('');
   box.querySelectorAll('.recent-tag').forEach(el => el.onclick = () => {
     const term = el.dataset.term;
