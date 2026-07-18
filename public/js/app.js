@@ -174,8 +174,8 @@ function renderApp() {
     </div>
     <div class="stat" id="stat-pending" style="cursor:pointer">
       <div class="label">已售 · 待结算</div>
-      <div class="value">${s.sold_unsettled || 0}</div>
-      <div class="sub">张未结算 · 点此看报表</div>
+      <div class="value">${fmtMoney(s.pending_amount || 0)}</div>
+      <div class="sub">待结算金额</div>
     </div>
     <div class="stat alert clickable" id="stat-expiring" style="cursor:pointer">
       <div class="label">7天内到期</div>
@@ -183,24 +183,15 @@ function renderApp() {
       <div class="sub">点此查看 · 需尽快售出</div>
     </div>
     <div class="stat clickable" id="stat-sold" style="cursor:pointer">
-      <div class="label">至今我们已售出</div>
-      <div class="value">${s.sold || 0} <small>张</small></div>
-      <div class="sub">面值 ${fmtMoney(s.sold_face_value)} · 点此看报表</div>
+      <div class="label">已售出</div>
+      <div class="value">${s.sold || 0}</div>
+      <div class="sub">面值 ${fmtMoney(s.sold_face_value)}</div>
     </div>
   </div>
 
   ${getToolbar()}
 
   <div class="list" id="list"></div>
-
-  <nav class="bottom-nav" id="bottom-nav">
-    <button class="nav-item" data-nav="home"><span class="nav-ico">🏠</span><span>首页</span></button>
-    <button class="nav-item" data-nav="report"><span class="nav-ico">📋</span><span>报表</span></button>
-    <button class="nav-item" data-nav="rankings"><span class="nav-ico">📊</span><span>数据</span></button>
-    <button class="nav-item" data-nav="settlement"><span class="nav-ico">💰</span><span>结算</span></button>
-    <button class="nav-item" data-nav="logs"><span class="nav-ico">📜</span><span>日志</span></button>
-    <button class="nav-item" data-nav="expiring"><span class="nav-ico">⏰</span><span>到期</span></button>
-  </nav>
 
   ${state.report || state.logs || state.settlement || state.rankings || state.expiring ? '' : `
   <div class="fab-backdrop" id="fab-backdrop" style="display:none"></div>
@@ -214,9 +205,8 @@ function renderApp() {
   const bs = document.getElementById('btn-settings');
   if (bs) bs.onclick = openSettings;
 
-  // 统计卡片与底部导航在所有视图（含子页面）都保持可点击/可切换
+  // 统计卡片在所有视图（含子页面）都保持可点击
   bindStatCards();
-  bindBottomNav();
 
   // 报表 / 日志 / 结算 / 排行 视图：工具栏与列表独立渲染，不再绑定默认搜索/筛选
   if (state.report) { bindReportToolbar(); loadReport(); return; }
@@ -290,31 +280,7 @@ function bindStatCards() {
   if (statExpiring) statExpiring.onclick = openExpiring;
 }
 
-/* ---------- 底部导航：跨页面一键切换 ---------- */
-function activeNav() {
-  if (state.rankings) return 'rankings';
-  if (state.report) return 'report';
-  if (state.settlement) return 'settlement';
-  if (state.logs) return 'logs';
-  if (state.expiring) return 'expiring';
-  return 'home';
-}
-function bindBottomNav() {
-  const nav = document.getElementById('bottom-nav');
-  if (!nav) return;
-  nav.querySelectorAll('.nav-item').forEach(b => {
-    b.onclick = () => {
-      const v = b.dataset.nav;
-      if (v === 'home') goHome();
-      else if (v === 'report') openReport();
-      else if (v === 'rankings') openRankings();
-      else if (v === 'settlement') openSettlement();
-      else if (v === 'logs') openLogs();
-      else if (v === 'expiring') openExpiring();
-    };
-  });
-  nav.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.nav === activeNav()));
-}
+/* ---------- 首页 ---------- */
 async function goHome() {
   state.report = false; state.logs = false; state.settlement = false; state.rankings = false; state.expiring = false;
   state.scope = 'default'; state.q = '';
@@ -586,6 +552,12 @@ function openSettings() {
 
 /* ---------- 版本更新记录（静态数据，离线可用，无需后端） ---------- */
 const CHANGELOG = [
+  { version: '3.21', date: '2026-07-18', items: [
+    '暂时取消底部常驻导航栏，保持页面简洁（子页面仍可通过统计卡片点击 / 设置入口切换）',
+    '待结算卡片改显示「待结算金额」（金额，原张数），副文精简为「待结算金额」',
+    '已售卡片文案精简：「至今我们已售出」→「已售出」、数值去掉「张」、副文去掉「点此看报表」',
+    '后端 stats 新增 pending_amount（已售未结算券的结算金额合计）'
+  ]},
   { version: '3.20', date: '2026-07-18', items: [
     '删除用户增加保护：不能删除当前登录账号、不能删除最后一个管理员',
     '删除前确认其名下券数量，支持「转移给接手人」或「保留为无主」（清空 owner_user_id 但保留姓名）',
@@ -738,9 +710,9 @@ function renderStats() {
   const s = state.stats;
   const els = [
     { sel: '.stat:nth-child(1) .value', val: s.unsold_unexpired || 0, sub: '.stat:nth-child(1) .sub', subText: '张可售券 · 成本 ' + fmtMoney(s.cost || 0) },
-    { sel: '.stat:nth-child(2) .value', val: s.sold_unsettled || 0, sub: '.stat:nth-child(2) .sub', subText: '张未结算' },
+    { sel: '.stat:nth-child(2) .value', val: fmtMoney(s.pending_amount || 0), sub: '.stat:nth-child(2) .sub', subText: '待结算金额' },
     { sel: '.stat:nth-child(3) .value', val: s.expiring_soon || 0, sub: '.stat:nth-child(3) .sub', subText: '需尽快售出' },
-    { sel: '.stat:nth-child(4) .value', val: s.sold || 0, sub: '.stat:nth-child(4) .sub', subText: '面值 ' + fmtMoney(s.sold_face_value || 0) + ' · 点此看报表' }
+    { sel: '.stat:nth-child(4) .value', val: s.sold || 0, sub: '.stat:nth-child(4) .sub', subText: '面值 ' + fmtMoney(s.sold_face_value || 0) }
   ];
   const container = document.querySelector('.stats');
   if (!container) return;

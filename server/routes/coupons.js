@@ -113,6 +113,7 @@ router.get('/stats', authMiddleware, (req, res) => {
   const off = dt.getTimezoneOffset();
   const soon = new Date(dt.getTime() - off * 60000).toISOString().slice(0, 10);
   const expiringSoon = unsoldUnexpired.filter(c => c.expiry_date && c.expiry_date <= soon).length;
+  const pendingAmount = Math.round(soldUnsettled.reduce((s, c) => s + (parseFloat(c.settle_amount) || 0), 0) * 100) / 100;
   res.json({
     unsold_unexpired: unsoldUnexpired.length,
     face_value: Math.round(faceValue * 100) / 100,
@@ -121,6 +122,7 @@ router.get('/stats', authMiddleware, (req, res) => {
     sold: sold.length,
     sold_face_value: Math.round(soldFaceValue * 100) / 100,
     sold_unsettled: soldUnsettled.length,
+    pending_amount: pendingAmount,
     expiring_soon: expiringSoon,
     expired_unsold: expiredUnsold.length
   });

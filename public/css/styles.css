@@ -21,7 +21,7 @@ body {
   font-size: 15px;
   line-height: 1.5;
 }
-#app { max-width: 720px; margin: 0 auto; min-height: 100vh; padding-bottom: 120px; }
+#app { max-width: 720px; margin: 0 auto; min-height: 100vh; padding-bottom: 96px; }
 
 /* ---------- 登录 ---------- */
 .login-wrap {
@@ -159,7 +159,7 @@ body {
 
 /* ---------- FAB ---------- */
 .fab {
-  position: fixed; right: 18px; bottom: 72px; z-index: 40;
+  position: fixed; right: 18px; bottom: 22px; z-index: 40;
   width: 58px; height: 58px; border-radius: 50%; border: none;
   background: var(--accent-grad); color: #fff; font-size: 30px; font-weight: 300;
   box-shadow: 0 8px 22px rgba(255,90,31,.45); cursor: pointer;
@@ -168,7 +168,7 @@ body {
 .fab.open { transform: rotate(45deg); }
 .fab-backdrop { position: fixed; inset: 0; z-index: 39; background: transparent; }
 .fab-menu {
-  position: fixed; right: 18px; bottom: 142px; z-index: 41;
+  position: fixed; right: 18px; bottom: 90px; z-index: 41;
   display: none; flex-direction: column; gap: 10px; align-items: flex-end;
 }
 .fab-item {
@@ -179,25 +179,6 @@ body {
 }
 .fab-item:active { transform: scale(.96); }
 @keyframes pop { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
-
-/* ---------- 底部导航（常驻，跨页面一键切换） ---------- */
-.bottom-nav {
-  position: fixed; left: 0; right: 0; bottom: 0; margin: 0 auto;
-  width: 100%; max-width: 720px; z-index: 35;
-  display: flex; background: #fff; border-top: 1px solid var(--line);
-  box-shadow: 0 -2px 12px rgba(20,20,40,.06);
-  padding-bottom: env(safe-area-inset-bottom);
-}
-.bottom-nav .nav-item {
-  flex: 1; border: none; background: none; cursor: pointer;
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
-  padding: 8px 0 9px; color: var(--muted); font-size: 11px; font-weight: 600;
-  -webkit-tap-highlight-color: transparent; transition: color .12s ease;
-}
-.bottom-nav .nav-item .nav-ico { font-size: 20px; line-height: 1; transition: transform .12s ease; }
-.bottom-nav .nav-item:active { color: var(--accent); }
-.bottom-nav .nav-item.active { color: var(--accent); }
-.bottom-nav .nav-item.active .nav-ico { transform: translateY(-1px); }
 
 /* ---------- Modal ---------- */
 .modal-mask {
