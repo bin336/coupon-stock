@@ -586,6 +586,11 @@ function openSettings() {
 
 /* ---------- 版本更新记录（静态数据，离线可用，无需后端） ---------- */
 const CHANGELOG = [
+  { version: '3.20', date: '2026-07-18', items: [
+    '删除用户增加保护：不能删除当前登录账号、不能删除最后一个管理员',
+    '删除前确认其名下券数量，支持「转移给接手人」或「保留为无主」（清空 owner_user_id 但保留姓名）',
+    '新增后端 /auth/users/:id/coupon-count 接口'
+  ]},
   { version: '3.18.1', date: '2026-07-18', items: [
     '首页「热门券商家」标签简化为「热门」'
   ]},
@@ -1600,9 +1605,14 @@ function renderUserList() {
       </div>
     </div>`).join('');
   box.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
-    if (!confirm('删除该用户？')) return;
-    try { await api('DELETE', '/auth/users/' + b.dataset.del); toast('已删除'); await loadUsers(); renderUserList(); }
-    catch (e) { toast(e.message); }
+    const id = Number(b.dataset.del);
+    const user = (state.users || []).find(u => u.id === id);
+    if (!user) return;
+    let count = 0;
+    try { count = (await api('GET', '/auth/users/' + id + '/coupon-count')).count || 0; } catch (e) { count = 0; }
+    if (count > 0) { openDeleteUserModal(user, count); return; }
+    if (!confirm('删除用户「' + (user.display_name || user.username) + '」？此操作不可恢复。')) return;
+    await doDeleteUser(id, { mode: 'keep' });
   });
   box.querySelectorAll('[data-reset]').forEach(b => b.onclick = async () => {
     const p = prompt('输入新密码：');
@@ -1610,6 +1620,45 @@ function renderUserList() {
     try { await api('PUT', '/auth/users/' + b.dataset.reset + '/password', { password: p }); toast('密码已重置'); }
     catch (e) { toast(e.message); }
   });
+}
+
+/* ---------- 删除用户前确认（转移 / 保留券） ---------- */
+function openDeleteUserModal(user, count) {
+  const candidates = (state.users || []).filter(u => u.id !== user.id);
+  const opts = candidates.length
+    ? candidates.map(u => `<option value="${u.id}">${escapeHtml(u.display_name)} @${escapeHtml(u.username)}</option>`).join('')
+    : '<option value="">（无其他用户，无法转移）</option>';
+  $modal.innerHTML = `
+  <div class="modal-mask" data-close="1">
+    <div class="modal" onclick="event.stopPropagation()">
+      <h3>删除用户「${escapeHtml(user.display_name)}」</h3>
+      <p style="font-size:14px;margin:6px 0 12px">该用户名下还有 <b style="color:var(--accent)">${count}</b> 张券，删除账号后这些券如何处理？</p>
+      <div class="field"><label>转移给接手人</label>
+        <select id="du-to" class="search">${opts}</select></div>
+      <div class="modal-actions" style="flex-wrap:wrap">
+        <button type="button" class="btn primary" id="du-transfer">转移给接手人</button>
+        <button type="button" class="btn ghost" id="du-keep">保留为无主</button>
+        <button type="button" class="btn ghost" id="du-cancel">取消</button>
+      </div>
+    </div>
+  </div>`;
+  const sel = document.getElementById('du-to');
+  document.getElementById('du-transfer').onclick = async () => {
+    const toId = sel.value;
+    if (!toId) { toast('请选择接手人，或选「保留为无主」'); return; }
+    await doDeleteUser(user.id, { mode: 'transfer', toUserId: Number(toId) });
+  };
+  document.getElementById('du-keep').onclick = () => doDeleteUser(user.id, { mode: 'keep' });
+  document.getElementById('du-cancel').onclick = openUserModal;
+  bindClose();
+}
+async function doDeleteUser(id, body) {
+  try {
+    await api('DELETE', '/auth/users/' + id, body);
+    toast('已删除');
+    await loadUsers();
+    openUserModal();
+  } catch (e) { toast(e.message); }
 }
 
 /* ---------- Modal 通用 ---------- */

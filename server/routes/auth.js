@@ -53,12 +53,43 @@ router.post('/users', authMiddleware, adminOnly, (req, res) => {
   res.json({ id: info.lastInsertRowid, username, display_name: dn, role: r });
 });
 
-// 删除用户（管理员，不能删自己）
+// 某用户拥有的券数量（删除前确认用）
+router.get('/users/:id/coupon-count', authMiddleware, adminOnly, (req, res) => {
+  const id = Number(req.params.id);
+  const row = db.prepare('SELECT COUNT(*) AS c FROM coupons WHERE owner_user_id = ?').get(id);
+  res.json({ count: row ? row.c : 0 });
+});
+
+// 删除用户（管理员，不能删自己；不能删最后一个管理员）
+// 删除时处理其名下券：转移给接手人(mode=transfer,toUserId) 或 保留为无主(mode=keep，清空 owner_user_id 但保留 owner_name)
 router.delete('/users/:id', authMiddleware, adminOnly, (req, res) => {
   const id = Number(req.params.id);
   if (id === req.user.id) return res.status(400).json({ error: '不能删除当前登录的账号' });
+  const u = db.prepare('SELECT id, role FROM users WHERE id = ?').get(id);
+  if (!u) return res.status(404).json({ error: '用户不存在' });
+  // ② 保护最后一个管理员
+  if (u.role === 'admin') {
+    const adminCount = db.prepare("SELECT COUNT(*) AS c FROM users WHERE role = 'admin'").get().c;
+    if (adminCount <= 1) return res.status(400).json({ error: '不能删除最后一个管理员' });
+  }
+  const body = req.body || {};
+  const mode = body.mode === 'transfer' ? 'transfer' : 'keep';
+  const cnt = db.prepare('SELECT COUNT(*) AS c FROM coupons WHERE owner_user_id = ?').get(id).c;
+  let detail = '删除用户';
+  if (mode === 'transfer') {
+    const toId = Number(body.toUserId);
+    const toUser = db.prepare('SELECT id, display_name FROM users WHERE id = ?').get(toId);
+    if (!toUser) return res.status(400).json({ error: '接手人不存在' });
+    db.prepare('UPDATE coupons SET owner_user_id = ?, owner_name = ? WHERE owner_user_id = ?')
+      .run(toUser.id, toUser.display_name, id);
+    detail = `删除用户（${cnt} 张券转移给 ${toUser.display_name}）`;
+  } else {
+    // ① 保留券，置空 owner_user_id（owner_name 文本保留，仍为原所有人姓名）
+    db.prepare('UPDATE coupons SET owner_user_id = NULL WHERE owner_user_id = ?').run(id);
+    detail = `删除用户（${cnt} 张券保留为无主）`;
+  }
   db.prepare('DELETE FROM users WHERE id = ?').run(id);
-  db.logOperation({ user_id: req.user.id, username: req.user.username, action: 'delete_user', target: String(id), detail: '删除用户' });
+  db.logOperation({ user_id: req.user.id, username: req.user.username, action: 'delete_user', target: String(id), detail });
   res.json({ ok: true });
 });
 
