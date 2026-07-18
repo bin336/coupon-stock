@@ -568,6 +568,10 @@ function openSettings() {
           <span class="si-ico">👥</span>
           <span class="si-text"><b>用户管理</b><small>账号、角色与密码</small></span>
         </button>
+        <button class="settings-item" id="set-changelog">
+          <span class="si-ico">📝</span>
+          <span class="si-text"><b>版本更新记录</b><small>查看每个版本的更新内容</small></span>
+        </button>
       </div>
       <div class="modal-actions">
         <button type="button" class="btn ghost" data-close="1">关闭</button>
@@ -576,6 +580,68 @@ function openSettings() {
   </div>`;
   document.getElementById('set-logs').onclick = () => { closeModal(); openLogs(); };
   document.getElementById('set-users').onclick = () => { closeModal(); openUserModal(); };
+  document.getElementById('set-changelog').onclick = () => { closeModal(); openChangelog(); };
+  bindClose();
+}
+
+/* ---------- 版本更新记录（静态数据，离线可用，无需后端） ---------- */
+const CHANGELOG = [
+  { version: '3.18.1', date: '2026-07-18', items: [
+    '首页「热门券商家」标签简化为「热门」'
+  ]},
+  { version: '3.18', date: '2026-07-18', items: [
+    '首页「大家都在搜」改为「热门」——展示库存频次最高的商家名，点击即按商家筛选',
+    '新增后端 /coupons/popular-merchants 接口（按商家名库存频次排序取前 8）',
+    '移除废弃的 search_log 搜索历史接口与写入调用'
+  ]},
+  { version: '3.17', date: '2026-07-18', items: [
+    '「7天内到期」统计卡片改为可点击，新增独立过期提醒页面',
+    '点击卡片或底部导航「到期」进入，列表展示 7 天内到期未售券，可直接标记售出/编辑/删除',
+    '新增 refreshList 分发器，到期视图内增删改后重算筛选'
+  ]},
+  { version: '3.16', date: '2026-07-18', items: [
+    '新增底部常驻导航栏（首页/报表/数据/结算/日志），任意子页面一键切换，无需回主页',
+    '修复子页面统计卡片不可点击的 bug',
+    'FAB 上浮避开导航栏'
+  ]},
+  { version: '3.15', date: '2026-07-17', items: [
+    '首页「至今我们已售出」卡片增加总面值，并作为数据报表模块入口',
+    '新增三大排行：销售业绩（结算金额）、囤券地主（未过期在售面值）、牛马（操作次数）',
+    '纯 CSS 条形图直观展示，无需联网依赖'
+  ]},
+  { version: '3.14', date: '2026-07-17', items: [
+    '结算全部视图文案「待别人结算金额（收他）」改为「（他收）」，语义更清晰'
+  ]},
+  { version: '3.13', date: '2026-07-17', items: [
+    '所有人/销售人相关的输入与搜索框改为下拉选择，选项含当前用户+全部用户+历史所有人'
+  ]},
+  { version: '3.12', date: '2026-07-17', items: [
+    '过期时间设为必填——OCR 未识别到时主动提示并高亮，提交空值拦截（没有无限期的券）'
+  ]},
+  { version: '3.11', date: '2026-07-17', items: [
+    '修复券码识别：接上空格分组合并、支持 8688 2233 4455 分组码、兜底避免抓取 Coupon/商家名等词'
+  ]},
+  { version: '3.10', date: '2026-07-17', items: [
+    '批量录入合并进底部 + 按钮，点击展开「快速入库 / 批量录入」弹出菜单'
+  ]}
+];
+function openChangelog() {
+  $modal.innerHTML = `
+  <div class="modal-mask" data-close="1">
+    <div class="modal" onclick="event.stopPropagation()">
+      <h3>版本更新记录</h3>
+      <div class="changelog">
+        ${CHANGELOG.map(v => `
+          <div class="cl-item">
+            <div class="cl-head"><span class="cl-ver">v${escapeHtml(v.version)}</span><span class="cl-date">${escapeHtml(v.date)}</span></div>
+            <ul class="cl-list">${v.items.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ul>
+          </div>`).join('')}
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" data-close="1">关闭</button>
+      </div>
+    </div>
+  </div>`;
   bindClose();
 }
 

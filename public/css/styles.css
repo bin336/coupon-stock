@@ -250,6 +250,16 @@ body {
 .settings-item .si-text b { font-size: 15px; font-weight: 700; color: var(--text); }
 .settings-item .si-text small { font-size: 12px; color: var(--muted); }
 
+/* ---------- 版本更新记录 ---------- */
+.changelog { max-height: 64vh; overflow-y: auto; margin: 4px 0 6px; -webkit-overflow-scrolling: touch; }
+.cl-item { padding: 12px 2px; border-bottom: 1px solid var(--line); }
+.cl-item:last-child { border-bottom: none; }
+.cl-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.cl-ver { font-weight: 800; font-size: 15px; color: var(--accent); }
+.cl-date { font-size: 12px; color: var(--muted); }
+.cl-list { margin: 0; padding-left: 18px; }
+.cl-list li { font-size: 13px; line-height: 1.65; color: var(--text); }
+
 /* ---------- OCR 识别提示 ---------- */
 .ocr-status { border-radius: 10px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px; line-height: 1.5; }
 .ocr-status.loading { background: #fff7ed; color: #b45309; }
