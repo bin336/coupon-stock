@@ -166,7 +166,7 @@ function renderApp() {
       <div class="user">
         <div class="avatar">${escapeHtml((state.user.display_name || '?').slice(0,1))}</div>
         <span>${escapeHtml(state.user.display_name)}</span>
-        <button class="icon" id="btn-settings" style="display:${state.user.role==='admin'?'inline-block':'none'}">设置</button>
+        <button class="icon" id="btn-settings" style="display:inline-block">设置</button>
         <button class="icon" id="btn-logout">退出</button>
       </div>
   </div>
@@ -640,18 +640,20 @@ function renderRankings(data) {
 
 /* ---------- 设置（汇总 日志 / 用户管理 入口） ---------- */
 function openSettings() {
+  const isAdmin = state.user.role === 'admin';
   $modal.innerHTML = `
   <div class="modal-mask" data-close="1">
     <div class="modal" onclick="event.stopPropagation()">
       <h3>设置</h3>
       <div class="settings-menu">
+        ${isAdmin ? `
         <button class="settings-item" id="set-logs">
           <span class="si-ico">📋</span>
           <span class="si-text"><b>操作日志</b><small>查看全部操作留痕</small></span>
-        </button>
+        </button>` : ''}
         <button class="settings-item" id="set-users">
           <span class="si-ico">👥</span>
-          <span class="si-text"><b>用户管理</b><small>账号、角色与密码</small></span>
+          <span class="si-text"><b>${isAdmin ? '用户管理' : '个人资料'}</b><small>${isAdmin ? '账号、角色与密码' : '修改我的昵称与密码'}</small></span>
         </button>
         <button class="settings-item" id="set-changelog">
           <span class="si-ico">📝</span>
@@ -663,7 +665,7 @@ function openSettings() {
       </div>
     </div>
   </div>`;
-  document.getElementById('set-logs').onclick = () => { closeModal(); openLogs(); };
+  if (isAdmin) document.getElementById('set-logs').onclick = () => { closeModal(); openLogs(); };
   document.getElementById('set-users').onclick = () => { closeModal(); openUserModal(); };
   document.getElementById('set-changelog').onclick = () => { closeModal(); openChangelog(); };
   bindClose();
@@ -1776,13 +1778,10 @@ function openImageViewer(file) {
     <div style="max-width:92vw;max-height:90vh">
       <img src="${uploadUrl(file)}" style="max-width:92vw;max-height:80vh;border-radius:12px" />
       <div style="text-align:center;margin-top:12px;display:flex;gap:10px;justify-content:center">
-        <button class="btn primary" id="iv-save" data-save="${escapeHtml(file)}">保存到手机</button>
-        <button class="btn ghost" id="iv-share" data-save="${escapeHtml(file)}">分享到闲鱼</button>
+        <button class="btn ghost" id="iv-share" data-save="${escapeHtml(file)}">分享</button>
       </div>
     </div>
   </div>`;
-  const sb = document.getElementById('iv-save');
-  if (sb) sb.onclick = () => saveImage(sb.getAttribute('data-save'));
   const sh = document.getElementById('iv-share');
   if (sh) sh.onclick = () => shareToXianyu(sh.getAttribute('data-save'), coupon);
   bindClose();
@@ -1790,6 +1789,8 @@ function openImageViewer(file) {
 
 /* ---------- 用户管理（管理员） ---------- */
 function openUserModal() {
+  // 普通用户只能查看/修改自己的资料，走个人资料表单
+  if (state.user.role !== 'admin') { openMyProfile(); return; }
   $modal.innerHTML = `
   <div class="modal-mask" data-close="1">
     <div class="modal" onclick="event.stopPropagation()">
@@ -1830,6 +1831,51 @@ function openUserModal() {
   });
   bindClose();
 }
+/* ---------- 个人资料（普通用户：仅改自己昵称/密码） ---------- */
+function openMyProfile() {
+  const me = state.user;
+  $modal.innerHTML = `
+  <div class="modal-mask" data-close="1">
+    <div class="modal" onclick="event.stopPropagation()">
+      <h3>个人资料</h3>
+      <p style="font-size:13px;color:#888;margin:0 0 12px">登录账号 <b>${escapeHtml(me.username)}</b> · 只能修改自己的昵称与密码</p>
+      <form id="my-form">
+        <div class="field"><label>昵称</label>
+          <input name="display_name" placeholder="显示名" value="${escapeHtml(me.display_name || '')}" required /></div>
+        <div class="field"><label>新密码（留空则不修改）</label>
+          <input name="password" type="password" placeholder="不填则保持原密码" autocomplete="new-password" /></div>
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" data-close="1">关闭</button>
+          <button type="submit" class="btn primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>`;
+  const f = document.getElementById('my-form');
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const dn = f.display_name.value.trim();
+    const pw = f.password.value;
+    if (!dn) { toast('昵称不能为空'); return; }
+    const btn = f.querySelector('button[type="submit"]');
+    btn.disabled = true; btn.textContent = '保存中…';
+    try {
+      const body = { display_name: dn };
+      if (pw) body.password = pw;
+      await api('PUT', '/auth/me', body);
+      state.user.display_name = dn;
+      localStorage.setItem('cs_user', JSON.stringify(state.user));
+      toast('已保存');
+      closeModal();
+      renderApp();
+    } catch (err) {
+      toast(err.message);
+      btn.disabled = false; btn.textContent = '保存';
+    }
+  });
+  bindClose();
+}
+
 function renderUserList() {
   const box = document.getElementById('user-list');
   if (!box) return;

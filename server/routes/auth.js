@@ -31,6 +31,25 @@ router.get('/me', authMiddleware, (req, res) => {
   res.json({ user: u });
 });
 
+// 修改自己的资料（昵称 / 密码），仅影响当前登录用户，与管理员改他人互不干扰
+router.put('/me', authMiddleware, (req, res) => {
+  const id = req.user.id;
+  const { display_name, password } = req.body || {};
+  const sets = []; const params = [];
+  if (display_name !== undefined && display_name !== null) {
+    const dn = String(display_name).trim();
+    if (!dn) return res.status(400).json({ error: '昵称不能为空' });
+    sets.push('display_name = ?'); params.push(dn);
+  }
+  if (password) {
+    sets.push('password_hash = ?'); params.push(bcrypt.hashSync(String(password), 10));
+  }
+  if (!sets.length) return res.status(400).json({ error: '没有要更新的内容' });
+  db.prepare('UPDATE users SET ' + sets.join(', ') + ' WHERE id = ?').run(...params, id);
+  db.logOperation({ user_id: id, username: req.user.username, action: 'edit_profile', target: req.user.username, detail: '修改个人资料' });
+  res.json({ ok: true });
+});
+
 // 用户列表（管理员）
 router.get('/users', authMiddleware, adminOnly, (req, res) => {
   const users = db.prepare('SELECT id,username,display_name,role,created_at FROM users ORDER BY id').all();
