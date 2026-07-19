@@ -671,9 +671,6 @@ function openSettings() {
 
 /* ---------- 版本更新记录（静态数据，离线可用，无需后端） ---------- */
 const CHANGELOG = [
-  { version: '3.27', date: '2026-07-19', items: [
-    '修复录入弹窗商家名 datalist 下拉在移动端遮挡输入框的问题：限制最多显示 12 条商家建议（datalist 本身会随输入自动过滤，无需全量展示），同时 CSS 限制下拉最大高度'
-  ]},
   { version: '3.26', date: '2026-07-18', items: [
     '移除首页搜索框下方的「面值快捷筛选」chip 行（按面值筛选功能仍保留：在「按商家/按所有人」汇总页点击面值标签可下钻，列表底部数量提示仍显示「面值 ¥X 共 N 张券」）'
   ]},
@@ -1437,12 +1434,12 @@ function openCouponModal(coupon, prefill) {
     }
   });
 
-  // 商家自动补全：拉取全部去重商家名填入 datalist（限制最多 12 条，避免移动端下拉浮层遮挡输入框）
+  // 商家自动补全：拉取全部去重商家名填入 datalist，避免「星巴克」/「星 巴克」分裂
   (async () => {
     try {
       const data = await api('GET', '/coupons/merchants');
       const dl = document.getElementById('merchant-list');
-      if (dl) dl.innerHTML = (data.merchants || []).slice(0, 12).map(m => `<option value="${escapeHtml(m)}"></option>`).join('');
+      if (dl) dl.innerHTML = (data.merchants || []).map(m => `<option value="${escapeHtml(m)}"></option>`).join('');
     } catch (e) { /* 自动补全失败不影响录入 */ }
   })();
 
