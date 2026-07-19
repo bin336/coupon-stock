@@ -460,7 +460,7 @@ function getToolbar() {
     </div>`;
   }
   return `<div class="toolbar">
-    <input class="search" id="search" placeholder="搜商家 / 券号 / 所有人 / 面值（如 美团 100）" value="${escapeHtml(state.q)}" />
+    <input class="search" id="search" placeholder="搜商家 / 券号 / 所有人 / 面值（如 许家菜 100）" value="${escapeHtml(state.q)}" />
     <div class="recent" id="recent-searches"></div>
     <div class="chips" id="chips">
       <div class="chip ${state.scope==='default'?'active':''}" data-scope="default">未售·未过期</div>
@@ -1303,7 +1303,7 @@ function openCouponModal(coupon, prefill) {
         <div class="field">
           <label>商家名称 <span class="req">*</span></label>
           <div class="autocomplete">
-            <input id="merchant-input" name="merchant" value="${escapeHtml(c.merchant || '')}" placeholder="如：星巴克 / 美团（输入可选历史商家）" autocomplete="off" required />
+            <input id="merchant-input" name="merchant" value="${escapeHtml(c.merchant || '')}" placeholder="如：许家菜" autocomplete="off" required />
             <ul class="ac-list" id="merchant-ac"></ul>
           </div>
         </div>
@@ -1340,7 +1340,7 @@ function openCouponModal(coupon, prefill) {
         </div>
         <div class="field">
           <label>平台</label>
-          <input name="platform" value="${escapeHtml(c.platform || '')}" placeholder="如：闲鱼 / 转转（选填）" />
+          <input name="platform" value="${escapeHtml(c.platform || '')}" placeholder="如：点评 / 抖音（选填）" />
         </div>
         <div class="field">
           <label>备注</label>
