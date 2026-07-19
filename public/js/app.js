@@ -273,7 +273,8 @@ function renderApp() {
 /* ---------- 统计卡片：跨页面常驻可点击 ---------- */
 function bindStatCards() {
   const statPending = document.getElementById('stat-pending');
-  if (statPending) statPending.onclick = openReport;
+  // 「待结算」卡片：所有人（含普通用户）均可进入结算模块查看自己的待结算
+  if (statPending) statPending.onclick = openSettlement;
   const statSold = document.getElementById('stat-sold');
   if (statSold) statSold.onclick = openRankings;
   const statExpiring = document.getElementById('stat-expiring');
@@ -304,12 +305,14 @@ function getToolbar() {
   }
   if (state.settlement) {
     const v = state.settlementView;
+    const isAdmin = state.user && state.user.role === 'admin';
     return `<div class="toolbar" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <button class="btn ghost" id="btn-back">← 返回</button>
       <div class="seg">
         <button class="btn ghost seg-btn ${v === 'mine' ? 'active' : ''}" id="sv-mine">我的</button>
-        <button class="btn ghost seg-btn ${v === 'all' ? 'active' : ''}" id="sv-all">全部</button>
+        ${isAdmin ? `<button class="btn ghost seg-btn ${v === 'all' ? 'active' : ''}" id="sv-all">全部</button>` : ''}
       </div>
+      ${isAdmin ? `<button class="btn ghost" id="sv-report">报表</button>` : ''}
     </div>`;
   }
   if (state.report) {
@@ -552,6 +555,11 @@ function openSettings() {
 
 /* ---------- 版本更新记录（静态数据，离线可用，无需后端） ---------- */
 const CHANGELOG = [
+  { version: '3.23', date: '2026-07-19', items: [
+    '普通用户权限开放：首页「待结算」卡片点击进入结算模块（此前仅管理员经报表页可进入）',
+    '结算模块新增「报表」按钮（仅管理员），保留利润/售出报表入口；普通用户仅见「我的」结算，隐藏「全部」与「报表」以保护他人账务隐私',
+    '后端 /coupons/report 仍为管理员专属，普通用户直接访问返回 403'
+  ]},
   { version: '3.22', date: '2026-07-18', items: [
     '首页搜索结果底部新增数量提示：搜索时显示「搜索「x」找到 N 张券」，否则显示「共 N 张券」',
     '修复搜索 0 条结果时数量提示缺失的问题'
@@ -884,7 +892,8 @@ async function openSettlement() {
   state.scope = 'sold';
   state.q = '';
   state.settlement = true;
-  state.settlementView = 'mine';
+  // 普通用户仅看「我的」；管理员默认可切到「全部」
+  state.settlementView = (state.user && state.user.role === 'admin') ? (state.settlementView || 'mine') : 'mine';
   renderApp();
   loadData();
 }
@@ -895,6 +904,8 @@ function bindSettlementToolbar() {
   const all = document.getElementById('sv-all');
   if (mine) mine.onclick = () => { state.settlementView = 'mine'; renderApp(); loadData(); };
   if (all) all.onclick = () => { state.settlementView = 'all'; renderApp(); loadData(); };
+  const rep = document.getElementById('sv-report');
+  if (rep) rep.onclick = openReport;
 }
 // 单张券的结算明细行（显示商家/券号/方向/金额，可点「结算」）
 function settleItemLine(c) {
