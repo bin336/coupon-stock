@@ -1459,7 +1459,11 @@ function openCouponModal(coupon, prefill) {
 
   document.getElementById('coupon-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const fd = new FormData(e.target);
+    const form = e.target;
+    const btn = form.querySelector('button[type="submit"]');
+    if (btn && btn.disabled) return;            // 防重复提交：请求期间已锁则忽略连点
+    if (btn) { btn.dataset.label = btn.textContent; btn.textContent = isEdit ? '保存中…' : '入库中…'; btn.disabled = true; }
+    const fd = new FormData(form);
     // 未选新图时不传 image 字段（编辑时保留旧图）
     if (!input.files.length) fd.delete('image');
     try {
@@ -1470,6 +1474,7 @@ function openCouponModal(coupon, prefill) {
       loadData();
     } catch (err) {
       toast(err.message || '保存失败');
+      if (btn) { btn.disabled = false; btn.textContent = btn.dataset.label || (isEdit ? '保存修改' : '入库'); }  // 失败恢复可重试
     }
   });
 
@@ -1648,6 +1653,9 @@ function openBatchModal() {
 
   document.getElementById('batch-submit').onclick = async () => {
     if (!rows.length) { toast('请先选择截图'); return; }
+    const btn = document.getElementById('batch-submit');
+    if (btn && btn.disabled) return;            // 防重复提交：请求期间已锁则忽略连点
+    if (btn) { btn.dataset.label = btn.textContent; btn.textContent = '入库中…'; btn.disabled = true; }
     const items = rows.map(rec => {
       const v = n => rec.node.querySelector(`[name="${n}"]`).value.trim();
       return {
@@ -1675,6 +1683,7 @@ function openBatchModal() {
       else toast(`成功入库 ${ok} 张`);
       if (ok > 0) { closeModal(); loadData(); }
     } catch (e) { toast(e.message || '批量入库失败'); }
+    finally { if (btn) { btn.disabled = false; btn.textContent = btn.dataset.label || '全部入库'; } }  // 恢复可重试（成功关弹窗无影响）
   };
 
   bindClose();

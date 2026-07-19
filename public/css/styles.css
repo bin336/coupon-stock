@@ -143,6 +143,7 @@ body {
   border: none; border-radius: 10px; padding: 9px 14px; font-size: 13px; cursor: pointer;
   font-weight: 600; background: #f3f4f7; color: var(--text);
 }
+.btn[disabled] { opacity: .55; cursor: not-allowed; }
 .btn.primary { background: var(--accent-grad); color: #fff; }
 .btn.ghost { background: #fff; border: 1px solid var(--line); }
 .btn.danger { background: #fff0ee; color: var(--warn); }
