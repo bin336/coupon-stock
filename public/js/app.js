@@ -137,7 +137,6 @@ async function loadData() {
   } else {
     renderList();
   }
-  refreshAmountChips();
 }
 // 列表内发生增删改后刷新：到期视图须重新走 openExpiring 重算「7天内」筛选，其余视图走 loadData
 async function refreshList() {
@@ -257,14 +256,6 @@ function renderApp() {
   if (bm) bm.onclick = () => openGroup('merchant');
   const bo = document.getElementById('btn-by-owner');
   if (bo) bo.onclick = () => openGroup('owner');
-  const amtChips = document.getElementById('amount-chips');
-  if (amtChips) amtChips.addEventListener('click', (e) => {
-    const c = e.target.closest('.amt-chip');
-    if (!c) return;
-    const a = Number(c.dataset.amount);
-    state.faceFilter = (state.faceFilter === a) ? null : a;
-    loadData();
-  });
 
   const fab = document.getElementById('fab');
   const fabMenu = document.getElementById('fab-menu');
@@ -306,13 +297,6 @@ function bindStatCards() {
 }
 
 /* ---------- 分组汇总（按商家 / 按所有人，同分组多面值一目了然） ---------- */
-// 面值快捷筛选 chip：取当前列表出现的面值（始终基于完整数据集，不受 faceFilter 影响）
-function denomChipsHtml() {
-  const amounts = [...new Set((state.coupons || []).map(c => c.amount).filter(a => a != null))].sort((a, b) => a - b);
-  if (!amounts.length) return '';
-  return amounts.map(a => `<div class="chip amt-chip ${state.faceFilter === a ? 'active' : ''}" data-amount="${a}">${fmtMoney(a)}</div>`).join('');
-}
-
 // 分组键：merchant -> 商家名；owner -> 所有人名
 function groupKeyField(key) { return key === 'owner' ? 'owner_name' : 'merchant'; }
 function groupTitle(key) { return key === 'owner' ? '👤 按所有人汇总' : '📊 按商家汇总'; }
@@ -395,12 +379,6 @@ function bindGroupToolbar(key) {
     state.groupQ = e.target.value;
     renderByGroup(state.coupons, key);
   });
-}
-
-// 数据加载后刷新面值 chip（首屏渲染时 coupons 尚空，需等 loadData 后补齐）
-function refreshAmountChips() {
-  const box = document.getElementById('amount-chips');
-  if (box) box.innerHTML = denomChipsHtml();
 }
 
 /* ---------- 首页 ---------- */
@@ -490,7 +468,6 @@ function getToolbar() {
       <div class="chip ${state.scope==='sold'?'active':''}" data-scope="sold">已售</div>
       <div class="chip ${state.scope==='expired'?'active':''}" data-scope="expired">已过期</div>
     </div>
-    <div class="chips amount-chips" id="amount-chips">${denomChipsHtml()}</div>
     <button class="btn ghost" id="btn-by-merchant">📊 按商家</button>
     <button class="btn ghost" id="btn-by-owner">👤 按所有人</button>
   </div>`;
@@ -694,6 +671,9 @@ function openSettings() {
 
 /* ---------- 版本更新记录（静态数据，离线可用，无需后端） ---------- */
 const CHANGELOG = [
+  { version: '3.26', date: '2026-07-18', items: [
+    '移除首页搜索框下方的「面值快捷筛选」chip 行（按面值筛选功能仍保留：在「按商家/按所有人」汇总页点击面值标签可下钻，列表底部数量提示仍显示「面值 ¥X 共 N 张券」）'
+  ]},
   { version: '3.25', date: '2026-07-19', items: [
     '首页新增「👤 按所有人」按钮，与「📊 按商家」并列：按所有人(owner_name)汇总，同样以面值标签展示各面值张数，可下钻',
     '「按商家/按所有人」汇总页内新增搜索框，可按商家名/所有人名实时过滤分组卡片',

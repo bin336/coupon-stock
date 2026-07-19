@@ -83,9 +83,6 @@ body {
   border-radius: 999px; padding: 7px 14px; font-size: 13px; cursor: pointer; white-space: nowrap;
 }
 .chip.active { background: var(--accent-grad); color: #fff; border-color: transparent; font-weight: 600; }
-.amount-chips { padding-top: 4px; }
-.amt-chip { background: #fff7f2; border-color: #ffd9c2; color: #e8590c; }
-.amt-chip.active { background: var(--accent-grad); color: #fff; border-color: transparent; font-weight: 600; }
 
 /* ---------- 按商家汇总 ---------- */
 .merchant-card { background: var(--card); border-radius: 16px; padding: 14px; box-shadow: var(--shadow); }
