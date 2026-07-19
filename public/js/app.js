@@ -671,6 +671,11 @@ function openSettings() {
 
 /* ---------- 版本更新记录（静态数据，离线可用，无需后端） ---------- */
 const CHANGELOG = [
+  { version: '3.34', date: '2026-07-19', items: [
+    '分享兜底不再弹出「已复制券信息并打开图片，去闲鱼粘贴发送」提示（复制+打开图片的静默行为保留）',
+    '代码清理：移除 saveImage 已废弃的 fallbackName 参数及其相关 data-name 传递',
+    '新增《使用文档.md》：面向操作人员的 app 使用手册（录入/搜索/汇总/结算/日志/存图分享/权限与已知限制）'
+  ]},
   { version: '3.33', date: '2026-07-19', items: [
     '缩略图调整：取消缩略图上的「存图」按钮，将「分享」入口从卡片底部移到缩略图原「存图」位置（点缩略图即分享，更贴合发闲鱼场景）；卡片底部保留「复制信息」'
   ]},
@@ -1716,7 +1721,7 @@ function openBatchModal() {
 }
 
 /* ---------- 保存券图片到手机（网页无法自动写相册，统一走「打开大图 + 长按保存」） ---------- */
-function saveImage(file, fallbackName) {
+function saveImage(file) {
   if (!file) return;
   const url = uploadUrl(file);
   // 浏览器安全限制：网页不能自动写相册。打开图片后由用户长按保存到相册（iOS/安卓通用），不再存成文件
@@ -1762,24 +1767,22 @@ async function shareToXianyu(file, coupon) {
   } catch (e) { /* 用户取消或分享失败，落下兜底 */ }
   try { await navigator.clipboard.writeText(text); } catch (_) {}
   window.open(url, '_blank');
-  toast('已复制券信息并打开图片，去闲鱼粘贴发送');
 }
 
 function openImageViewer(file) {
   const coupon = state.coupons.find(c => c.image_filename === file);
-  const name = coupon ? (coupon.merchant + (coupon.coupon_code ? '_' + coupon.coupon_code : '')) : 'coupon';
   $modal.innerHTML = `
   <div class="modal-mask" data-close="1" style="align-items:center">
     <div style="max-width:92vw;max-height:90vh">
       <img src="${uploadUrl(file)}" style="max-width:92vw;max-height:80vh;border-radius:12px" />
       <div style="text-align:center;margin-top:12px;display:flex;gap:10px;justify-content:center">
-        <button class="btn primary" id="iv-save" data-save="${escapeHtml(file)}" data-name="${escapeHtml(name)}">保存到手机</button>
+        <button class="btn primary" id="iv-save" data-save="${escapeHtml(file)}">保存到手机</button>
         <button class="btn ghost" id="iv-share" data-save="${escapeHtml(file)}">分享到闲鱼</button>
       </div>
     </div>
   </div>`;
   const sb = document.getElementById('iv-save');
-  if (sb) sb.onclick = () => saveImage(sb.getAttribute('data-save'), sb.getAttribute('data-name'));
+  if (sb) sb.onclick = () => saveImage(sb.getAttribute('data-save'));
   const sh = document.getElementById('iv-share');
   if (sh) sh.onclick = () => shareToXianyu(sh.getAttribute('data-save'), coupon);
   bindClose();
