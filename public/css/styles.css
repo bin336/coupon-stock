@@ -215,6 +215,8 @@ body {
 }
 .field input:focus, .field textarea:focus { border-color: var(--accent); }
 .field .req { color: var(--warn); }
+/* datalist 下拉：限制高度避免移动端遮挡输入框（部分浏览器支持） */
+datalist { max-height: 200px; overflow-y: auto; }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .img-preview { margin-top: 8px; }
 .img-preview img { max-width: 140px; max-height: 140px; border-radius: 10px; border: 1px solid var(--line); }
