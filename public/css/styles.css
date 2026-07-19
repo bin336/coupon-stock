@@ -214,6 +214,16 @@ body {
   font-size: 15px; outline: none; background: #fff; font-family: inherit;
 }
 .field input:focus, .field textarea:focus { border-color: var(--accent); }
+/* 商家名自定义自动补全：列表吸附在输入框下方，绝不遮挡输入框（替代原生 datalist） */
+.autocomplete { position: relative; }
+.ac-list {
+  position: absolute; top: 100%; left: 0; right: 0; z-index: 60;
+  margin: 4px 0 0; padding: 4px 0; list-style: none;
+  background: #fff; border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.12); max-height: 220px; overflow-y: auto; display: none;
+}
+.ac-item { padding: 9px 12px; font-size: 15px; cursor: pointer; }
+.ac-item:hover, .ac-item.active { background: #fff7f2; }
 .field .req { color: var(--warn); }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .img-preview { margin-top: 8px; }

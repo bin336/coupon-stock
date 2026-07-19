@@ -671,6 +671,10 @@ function openSettings() {
 
 /* ---------- 版本更新记录（静态数据，离线可用，无需后端） ---------- */
 const CHANGELOG = [
+  { version: '3.27', date: '2026-07-19', items: [
+    '修复录入弹窗商家名输入：原生 datalist 浮层在移动端软键盘弹出后会顶到输入框上方遮挡输入，现改为自定义建议列表（absolute 吸附在输入框正下方，位置自可控），键盘弹出也不会遮挡',
+    '自定义建议列表随输入实时过滤去重商家名（最多 10 条），点选即填入，保留防「星巴克」/「星 巴克」分裂的自动补全能力'
+  ]},
   { version: '3.26', date: '2026-07-18', items: [
     '移除首页搜索框下方的「面值快捷筛选」chip 行（按面值筛选功能仍保留：在「按商家/按所有人」汇总页点击面值标签可下钻，列表底部数量提示仍显示「面值 ¥X 共 N 张券」）'
   ]},
@@ -1252,6 +1256,39 @@ function ownerSelect({ name, id, selected, cls, emptyLabel } = {}) {
   return `<select ${attrs}>${opts}</select>`;
 }
 
+/* ---------- 商家名自定义自动补全（替代原生 datalist，列表吸附在输入框下方不遮挡） ---------- */
+let merchantNames = [];
+
+function setupMerchantAutocomplete() {
+  const input = document.getElementById('merchant-input');
+  const list = document.getElementById('merchant-ac');
+  if (!input || !list) return;
+  if (input.__acBound) return; // 避免重复绑定
+  input.__acBound = true;
+
+  function render() {
+    const term = (input.value || '').trim().toLowerCase();
+    const matches = (term
+      ? merchantNames.filter(m => m.toLowerCase().includes(term))
+      : merchantNames
+    ).slice(0, 10);
+    if (!matches.length) { list.style.display = 'none'; list.innerHTML = ''; return; }
+    list.innerHTML = matches.map(m => `<li class="ac-item" data-val="${escapeHtml(m)}">${escapeHtml(m)}</li>`).join('');
+    list.style.display = 'block';
+  }
+
+  input.addEventListener('input', render);
+  input.addEventListener('focus', render);
+  input.addEventListener('blur', () => setTimeout(() => { list.style.display = 'none'; }, 150));
+  list.addEventListener('click', (e) => {
+    const li = e.target.closest('.ac-item');
+    if (!li) return;
+    input.value = li.dataset.val;
+    list.style.display = 'none';
+    input.focus();
+  });
+}
+
 /* ---------- 录入 / 编辑 弹窗 ---------- */
 function openCouponModal(coupon, prefill) {
   const isEdit = !!coupon;
@@ -1265,8 +1302,10 @@ function openCouponModal(coupon, prefill) {
       <form id="coupon-form">
         <div class="field">
           <label>商家名称 <span class="req">*</span></label>
-          <input name="merchant" list="merchant-list" value="${escapeHtml(c.merchant || '')}" placeholder="如：星巴克 / 美团（输入可选历史商家）" required />
-          <datalist id="merchant-list"></datalist>
+          <div class="autocomplete">
+            <input id="merchant-input" name="merchant" value="${escapeHtml(c.merchant || '')}" placeholder="如：星巴克 / 美团（输入可选历史商家）" autocomplete="off" required />
+            <ul class="ac-list" id="merchant-ac"></ul>
+          </div>
         </div>
         <div class="two">
           <div class="field">
@@ -1434,12 +1473,13 @@ function openCouponModal(coupon, prefill) {
     }
   });
 
-  // 商家自动补全：拉取全部去重商家名填入 datalist，避免「星巴克」/「星 巴克」分裂
+  // 商家自动补全：拉取全部去重商家名，渲染为自定义建议列表（吸附输入框下方，避免原生 datalist 浮层遮挡输入框）
+  setupMerchantAutocomplete();
   (async () => {
     try {
       const data = await api('GET', '/coupons/merchants');
-      const dl = document.getElementById('merchant-list');
-      if (dl) dl.innerHTML = (data.merchants || []).map(m => `<option value="${escapeHtml(m)}"></option>`).join('');
+      merchantNames = data.merchants || [];
+      setupMerchantAutocomplete();
     } catch (e) { /* 自动补全失败不影响录入 */ }
   })();
 
