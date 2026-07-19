@@ -13,6 +13,8 @@ const state = {
   logs: false,        // 是否处于操作日志视图
   rankings: false,    // 是否处于数据报表（三大排行）视图
   expiring: false,    // 是否处于 7天内到期 视图
+  byMerchant: false,  // 是否处于「按商家」汇总视图
+  faceFilter: null,   // 面值快捷筛选（精确匹配 amount，如 100）
   q: '',
   coupons: [],
   stats: {},
@@ -129,9 +131,12 @@ async function loadData() {
   renderStats();
   if (state.settlement) {
     renderSettlement(state.coupons.filter(c => c.status === 'sold' && !c.settled));
+  } else if (state.byMerchant) {
+    renderByMerchant(state.coupons);
   } else {
     renderList();
   }
+  refreshAmountChips();
 }
 // 列表内发生增删改后刷新：到期视图须重新走 openExpiring 重算「7天内」筛选，其余视图走 loadData
 async function refreshList() {
@@ -223,6 +228,11 @@ function renderApp() {
     bindExpiringToolbar();
     return;
   }
+  if (state.byMerchant) {
+    bindMerchantToolbar();
+    loadData();
+    return;
+  }
 
   const search = document.getElementById('search');
   let st;
@@ -239,6 +249,17 @@ function renderApp() {
     if (!c) return;
     state.scope = c.dataset.scope;
     document.querySelectorAll('#chips .chip').forEach(x => x.classList.toggle('active', x === c));
+    loadData();
+  });
+
+  const bm = document.getElementById('btn-by-merchant');
+  if (bm) bm.onclick = openSummary;
+  const amtChips = document.getElementById('amount-chips');
+  if (amtChips) amtChips.addEventListener('click', (e) => {
+    const c = e.target.closest('.amt-chip');
+    if (!c) return;
+    const a = Number(c.dataset.amount);
+    state.faceFilter = (state.faceFilter === a) ? null : a;
     loadData();
   });
 
@@ -281,10 +302,94 @@ function bindStatCards() {
   if (statExpiring) statExpiring.onclick = openExpiring;
 }
 
+/* ---------- 按商家汇总（同商家多面值一目了然） ---------- */
+// 面值快捷筛选 chip：取当前列表出现的面值（始终基于完整数据集，不受 faceFilter 影响）
+function denomChipsHtml() {
+  const amounts = [...new Set((state.coupons || []).map(c => c.amount).filter(a => a != null))].sort((a, b) => a - b);
+  if (!amounts.length) return '';
+  return amounts.map(a => `<div class="chip amt-chip ${state.faceFilter === a ? 'active' : ''}" data-amount="${a}">${fmtMoney(a)}</div>`).join('');
+}
+
+async function openSummary() {
+  // 进入汇总：清空搜索与面值筛选，回到该 scope 下「按商家」全貌
+  state.byMerchant = true;
+  state.q = ''; state.faceFilter = null;
+  state.report = false; state.logs = false; state.settlement = false; state.rankings = false; state.expiring = false;
+  renderApp(); loadData();
+}
+
+function renderByMerchant(coupons) {
+  const list = document.getElementById('list');
+  if (!list) return;
+  const groups = {};
+  coupons.forEach(c => {
+    const m = c.merchant || '（未命名商家）';
+    (groups[m] = groups[m] || []).push(c);
+  });
+  const names = Object.keys(groups).sort((a, b) => a.localeCompare(b, 'zh'));
+  if (!names.length) {
+    list.innerHTML = `<div class="empty">这里还没有券～<br/>点右下角 + 快速入库吧</div>`;
+    return;
+  }
+  list.innerHTML = names.map(name => {
+    const cs = groups[name];
+    const byAmt = {};
+    cs.forEach(c => { (byAmt[c.amount] = byAmt[c.amount] || []).push(c); });
+    const amounts = Object.keys(byAmt).map(Number).sort((a, b) => a - b);
+    const totalQty = cs.reduce((s, c) => s + (Number(c.quantity) || 1), 0);
+    const totalFace = cs.reduce((s, c) => s + (Number(c.amount) || 0) * (Number(c.quantity) || 1), 0);
+    const badges = amounts.map(a => {
+      const qty = byAmt[a].reduce((s, c) => s + (Number(c.quantity) || 1), 0);
+      return `<button class="denom-badge" data-merchant="${escapeHtml(name)}" data-amount="${a}">${fmtMoney(a)} ×${qty}</button>`;
+    }).join('');
+    return `<div class="merchant-card">
+      <div class="mc-head">
+        <span class="mc-name">${escapeHtml(name)}</span>
+        <span class="mc-meta">${cs.length} 批次 · 共 ${totalQty} 张 · 面值 ${fmtMoney(totalFace)}</span>
+      </div>
+      <div class="mc-badges">${badges}</div>
+    </div>`;
+  }).join('');
+  bindMerchantEvents();
+}
+
+function bindMerchantEvents() {
+  const list = document.getElementById('list');
+  if (!list) return;
+  list.querySelectorAll('.denom-badge').forEach(b => {
+    b.onclick = () => {
+      // 下钻：平铺列表只看该商家该面值
+      state.byMerchant = false;
+      state.q = b.dataset.merchant;
+      state.faceFilter = Number(b.dataset.amount);
+      renderApp(); loadData();
+    };
+  });
+}
+
+function bindMerchantToolbar() {
+  const back = document.getElementById('btn-back');
+  if (back) back.onclick = () => { state.byMerchant = false; state.faceFilter = null; renderApp(); loadData(); };
+  const chips = document.getElementById('chips');
+  if (chips) chips.addEventListener('click', (e) => {
+    const c = e.target.closest('.chip');
+    if (!c) return;
+    state.scope = c.dataset.scope;
+    chips.querySelectorAll('.chip').forEach(x => x.classList.toggle('active', x === c));
+    loadData();
+  });
+}
+
+// 数据加载后刷新面值 chip（首屏渲染时 coupons 尚空，需等 loadData 后补齐）
+function refreshAmountChips() {
+  const box = document.getElementById('amount-chips');
+  if (box) box.innerHTML = denomChipsHtml();
+}
+
 /* ---------- 首页 ---------- */
 async function goHome() {
-  state.report = false; state.logs = false; state.settlement = false; state.rankings = false; state.expiring = false;
-  state.scope = 'default'; state.q = '';
+  state.report = false; state.logs = false; state.settlement = false; state.rankings = false; state.expiring = false; state.byMerchant = false;
+  state.scope = 'default'; state.q = ''; state.faceFilter = null;
   renderApp(); loadData(); loadUsers();
 }
 
@@ -345,8 +450,20 @@ function getToolbar() {
       <button class="btn primary" id="lf-go">查询</button>
     </div>`;
   }
+  if (state.byMerchant) {
+    return `<div class="toolbar" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <button class="btn ghost" id="btn-back">← 返回</button>
+      <div class="tb-title">📊 按商家汇总</div>
+      <div class="chips" id="chips">
+        <div class="chip ${state.scope==='default'?'active':''}" data-scope="default">未售·未过期</div>
+        <div class="chip ${state.scope==='all'?'active':''}" data-scope="all">全部</div>
+        <div class="chip ${state.scope==='sold'?'active':''}" data-scope="sold">已售</div>
+        <div class="chip ${state.scope==='expired'?'active':''}" data-scope="expired">已过期</div>
+      </div>
+    </div>`;
+  }
   return `<div class="toolbar">
-    <input class="search" id="search" placeholder="搜商家 / 券号 / 所有人（支持拼音、首字母）" value="${escapeHtml(state.q)}" />
+    <input class="search" id="search" placeholder="搜商家 / 券号 / 所有人 / 面值（如 美团 100）" value="${escapeHtml(state.q)}" />
     <div class="recent" id="recent-searches"></div>
     <div class="chips" id="chips">
       <div class="chip ${state.scope==='default'?'active':''}" data-scope="default">未售·未过期</div>
@@ -354,12 +471,14 @@ function getToolbar() {
       <div class="chip ${state.scope==='sold'?'active':''}" data-scope="sold">已售</div>
       <div class="chip ${state.scope==='expired'?'active':''}" data-scope="expired">已过期</div>
     </div>
+    <div class="chips amount-chips" id="amount-chips">${denomChipsHtml()}</div>
+    <button class="btn ghost" id="btn-by-merchant">📊 按商家</button>
   </div>`;
 }
 
 /* ---------- 售出 / 利润报表 ---------- */
 async function openReport() {
-  state.report = true; state.rankings = false; state.logs = false; state.settlement = false; state.scope = 'default';
+  state.report = true; state.rankings = false; state.logs = false; state.settlement = false; state.byMerchant = false; state.scope = 'default';
   renderApp(); await loadReport();
 }
 function bindReportToolbar() {
@@ -434,7 +553,7 @@ function renderReport(data) {
 
 /* ---------- 数据报表（三大排行） ---------- */
 async function openRankings() {
-  state.rankings = true; state.report = false; state.logs = false; state.settlement = false; state.scope = 'default';
+  state.rankings = true; state.report = false; state.logs = false; state.settlement = false; state.byMerchant = false; state.scope = 'default';
   renderApp(); await loadRankings();
 }
 function bindRankingsToolbar() {
@@ -454,7 +573,7 @@ function soonDate() {
   return dt.getFullYear() + '-' + mm + '-' + dd;
 }
 async function openExpiring() {
-  state.report = false; state.logs = false; state.settlement = false; state.rankings = false; state.expiring = true;
+  state.report = false; state.logs = false; state.settlement = false; state.rankings = false; state.byMerchant = false; state.expiring = true;
   state.scope = 'default'; state.q = '';
   renderApp();
   try {
@@ -555,6 +674,12 @@ function openSettings() {
 
 /* ---------- 版本更新记录（静态数据，离线可用，无需后端） ---------- */
 const CHANGELOG = [
+  { version: '3.24', date: '2026-07-19', items: [
+    '新增「按商家」汇总视图：同一商家下各面值以标签呈现（如 ¥100 ×3 / ¥50 ×2），并显示批次数、总张数、总面值，一眼看清不同面值各多少张',
+    '汇总视图内点击某个面值标签可下钻到「该商家+该面值」的平铺明细',
+    '首页新增面值快捷筛选 chip（取库存实际面值），点一下全盘按面值过滤；列表底部数量提示同步显示「面值 ¥X 共 N 张券」',
+    '搜索支持按面值：搜「100」或「美团 100」可定位对应面值批次（后端改为分词匹配，含面值字段）'
+  ]},
   { version: '3.23', date: '2026-07-19', items: [
     '普通用户权限开放：首页「待结算」卡片点击进入结算模块（此前仅管理员经报表页可进入）',
     '结算模块新增「报表」按钮（仅管理员），保留利润/售出报表入口；普通用户仅见「我的」结算，隐藏「全部」与「报表」以保护他人账务隐私',
@@ -636,7 +761,7 @@ function openChangelog() {
 
 /* ---------- 操作日志 ---------- */
 async function openLogs() {
-  state.logs = true; state.report = false; state.rankings = false; state.settlement = false;
+  state.logs = true; state.report = false; state.rankings = false; state.settlement = false; state.byMerchant = false;
   renderApp(); await loadLogs();
 }
 function bindLogToolbar() {
@@ -738,38 +863,43 @@ function renderStats() {
 function renderList() {
   const list = document.getElementById('list');
   if (!list) return;
-  if (!state.coupons.length) {
+  // 面值快捷筛选（客户端精确匹配，保持 state.coupons 为完整数据集以驱动面值 chip）
+  let coupons = state.coupons;
+  if (state.faceFilter != null) coupons = coupons.filter(c => Number(c.amount) === Number(state.faceFilter));
+  if (!coupons.length) {
     list.innerHTML = `<div class="empty">这里还没有券～<br/>点右下角 + 快速入库吧</div>`;
-    if (!state.expiring) appendResultCount(list);
+    if (!state.expiring) appendResultCount(list, state.coupons.length);
     return;
   }
 
   // 已售页面：按「结算」子状态分组（未结算优先排上方；已结算灰化沉到下方）
   if (state.scope === 'sold') {
-    const unsettled = state.coupons.filter(c => !c.settled);
-    const settled = state.coupons.filter(c => c.settled);
+    const unsettled = coupons.filter(c => !c.settled);
+    const settled = coupons.filter(c => c.settled);
     list.innerHTML =
       groupHead('未结算', unsettled.length, '待回款') +
       (unsettled.length ? unsettled.map(c => couponCard(c, true)).join('') : `<div class="empty small">暂无未结算券</div>`) +
       groupHead('已结算', settled.length, '已回款') +
       (settled.length ? settled.map(c => couponCard(c, true)).join('') : `<div class="empty small">暂无已结算券</div>`);
-    if (!state.expiring) appendResultCount(list);
+    if (!state.expiring) appendResultCount(list, coupons.length);
     bindListEvents();
     return;
   }
 
-  list.innerHTML = state.coupons.map(c => couponCard(c, false)).join('');
-  if (!state.expiring) appendResultCount(list);
+  list.innerHTML = coupons.map(c => couponCard(c, false)).join('');
+  if (!state.expiring) appendResultCount(list, coupons.length);
   bindListEvents();
 }
 
-// 列表底部结果数量提示（搜索时显示「搜索「x」找到 N 张券」，否则「共 N 张券」）
-function appendResultCount(list) {
+// 列表底部结果数量提示（搜索/面值筛选时显示对应数量，否则「共 N 张券」）
+function appendResultCount(list, count) {
   const q = (state.q || '').trim();
-  const n = state.coupons.length;
+  const n = (count != null) ? count : state.coupons.length;
   const div = document.createElement('div');
   div.className = 'list-count';
-  div.textContent = q ? `搜索「${q}」找到 ${n} 张券` : `共 ${n} 张券`;
+  div.textContent = q
+    ? `搜索「${q}」找到 ${n} 张券`
+    : (state.faceFilter != null ? `面值 ${fmtMoney(state.faceFilter)} 共 ${n} 张券` : `共 ${n} 张券`);
   list.appendChild(div);
 }
 
@@ -888,7 +1018,7 @@ function bindListEvents() {
 
 /* ---------- 结算模块 ---------- */
 async function openSettlement() {
-  state.report = false; state.logs = false; state.rankings = false;
+  state.report = false; state.logs = false; state.rankings = false; state.byMerchant = false;
   state.scope = 'sold';
   state.q = '';
   state.settlement = true;

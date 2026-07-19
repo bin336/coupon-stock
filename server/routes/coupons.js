@@ -75,10 +75,14 @@ router.get('/', authMiddleware, (req, res) => {
     params.push(today);
   }
   if (q) {
-    const like = '%' + q + '%';
-    const likePy = '%' + q.toLowerCase() + '%';
-    sql += ' AND (merchant LIKE ? OR coupon_code LIKE ? OR owner_name LIKE ? OR platform LIKE ? OR note LIKE ? OR pinyin LIKE ?)';
-    params.push(like, like, like, like, like, likePy);
+    // 分词搜索：每个空格分隔的词都要命中任一字段（商家/券号/所有人/平台/备注/拼音/面值）
+    const tokens = String(q).trim().split(/\s+/).filter(Boolean);
+    tokens.forEach(tok => {
+      const like = '%' + tok + '%';
+      const likePy = '%' + tok.toLowerCase() + '%';
+      sql += ' AND (merchant LIKE ? OR coupon_code LIKE ? OR owner_name LIKE ? OR platform LIKE ? OR note LIKE ? OR pinyin LIKE ? OR CAST(amount AS TEXT) LIKE ?)';
+      params.push(like, like, like, like, like, likePy, like);
+    });
   }
   if (owner) {
     sql += ' AND owner_name LIKE ?';

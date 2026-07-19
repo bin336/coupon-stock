@@ -83,6 +83,23 @@ body {
   border-radius: 999px; padding: 7px 14px; font-size: 13px; cursor: pointer; white-space: nowrap;
 }
 .chip.active { background: var(--accent-grad); color: #fff; border-color: transparent; font-weight: 600; }
+.amount-chips { padding-top: 4px; }
+.amt-chip { background: #fff7f2; border-color: #ffd9c2; color: #e8590c; }
+.amt-chip.active { background: var(--accent-grad); color: #fff; border-color: transparent; font-weight: 600; }
+
+/* ---------- 按商家汇总 ---------- */
+.merchant-card { background: var(--card); border-radius: 16px; padding: 14px; box-shadow: var(--shadow); }
+.mc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.mc-name { font-size: 16px; font-weight: 700; color: var(--text); }
+.mc-meta { font-size: 12px; color: var(--muted); }
+.mc-badges { display: flex; flex-wrap: wrap; gap: 8px; }
+.denom-badge {
+  border: 1px solid var(--line); background: #f6f7f9; color: var(--text);
+  border-radius: 10px; padding: 8px 12px; font-size: 13px; cursor: pointer; white-space: nowrap;
+  transition: all .12s ease;
+}
+.denom-badge:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
+.denom-badge:active { transform: translateY(0); }
 .recent { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 0 2px; align-items: center; }
 .recent-label { font-size: 12px; color: #999; margin-right: 2px; }
 .recent-tag { flex: 0 0 auto; border: 1px solid var(--line); background: #f6f7f9; color: var(--text); border-radius: 999px; padding: 5px 12px; font-size: 12px; cursor: pointer; white-space: nowrap; }
