@@ -261,6 +261,7 @@ router.post('/batch', authMiddleware, uploadArray, (req, res) => {
     return res.status(400).json({ error: '条目数量与图片数量不一致' });
   }
   const created = [];
+  const createdDetails = [];
   const errors = [];
   const insert = db.prepare(`INSERT INTO coupons
     (merchant, amount, coupon_code, quantity, expiry_date, cost, owner_name, platform, owner_user_id, image_filename, note, created_by, pinyin)
@@ -281,13 +282,23 @@ router.post('/batch', authMiddleware, uploadArray, (req, res) => {
       try {
         const info = insert.run(merchant, amount, coupon_code, quantity, expiry_date, cost, owner_name, platform, req.user.id, file.filename, note, req.user.id, toPinyin(merchant, owner_name, platform, note));
         created.push(info.lastInsertRowid);
+        createdDetails.push({ merchant, amount, quantity, owner_name });
       } catch (e) {
         errors.push({ index: i, file: file.originalname, error: '入库失败：' + e.message });
       }
     });
   });
   try { tx(); } catch (e) { return res.status(500).json({ error: '批量入库失败：' + e.message }); }
-  if (created.length) logOp(req, 'batch_add', `${created.length}张`, `批量入库 ${created.length} 张`);
+  if (created.length) {
+    // 对象：去重商家名（单商家直接用商家名；多商家取前 3 个并标注家数）
+    const merchants = [...new Set(createdDetails.map(c => c.merchant))];
+    const target = merchants.length === 1
+      ? merchants[0]
+      : merchants.slice(0, 3).join('、') + (merchants.length > 3 ? ` 等${merchants.length}家` : '');
+    // 详情：逐券「商家 ¥面值 ×张数」摘要
+    const detail = `批量入库 ${created.length} 张：` + createdDetails.map(c => `${c.merchant} ¥${c.amount} ×${c.quantity}`).join('，');
+    logOp(req, 'batch_add', target, detail);
+  }
   res.json({ count: created.length, created, errors });
 });
 

@@ -671,6 +671,16 @@ function openSettings() {
 
 /* ---------- 版本更新记录（静态数据，离线可用，无需后端） ---------- */
 const CHANGELOG = [
+  { version: '3.30', date: '2026-07-19', items: [
+    '成本改为选填：单条录入弹窗的成本去掉必填（此前误标 required，与批量录入不一致），标签必填星号一并移除',
+    '修复操作日志「批量入库」记录错误：对象改为真实商家名（多商家取前 3 个并标注家数），详情改为「商家 ¥面值 ×张数」逐券摘要，不再只显示纯数量'
+  ]},
+  { version: '3.29', date: '2026-07-19', items: [
+    '防重复提交：单条录入与批量入库在提交瞬间锁定按钮并显示「入库中…」，连点只生效一次；仅失败时才恢复可重试'
+  ]},
+  { version: '3.28', date: '2026-07-19', items: [
+    '文案优化：商家名输入框提示改为「如：许家菜」；平台提示改为「如：点评 / 抖音」；首页搜索示例从「美团」改为「许家菜」'
+  ]},
   { version: '3.27', date: '2026-07-19', items: [
     '修复录入弹窗商家名输入：原生 datalist 浮层在移动端软键盘弹出后会顶到输入框上方遮挡输入，现改为自定义建议列表（absolute 吸附在输入框正下方，位置自可控），键盘弹出也不会遮挡',
     '自定义建议列表随输入实时过滤去重商家名（最多 10 条），点选即填入，保留防「星巴克」/「星 巴克」分裂的自动补全能力'
@@ -1330,8 +1340,8 @@ function openCouponModal(coupon, prefill) {
         </div>
         <div class="two">
           <div class="field">
-            <label>成本 <span class="req">*</span></label>
-            <input name="cost" type="number" step="0.01" value="${c.cost != null ? c.cost : ''}" placeholder="0" required />
+            <label>成本</label>
+            <input name="cost" type="number" step="0.01" value="${c.cost != null ? c.cost : ''}" placeholder="0" />
           </div>
           <div class="field">
             <label>所有人</label>
