@@ -130,7 +130,7 @@ body {
   border: 1px solid var(--line); cursor: pointer; background: #fafafa;
 }
 .coupon .thumb-wrap { position: relative; flex: 0 0 auto; }
-.coupon .thumb-save {
+.coupon .thumb-share {
   position: absolute; right: 2px; bottom: 2px;
   background: var(--accent); color: #fff; border: none; border-radius: 8px;
   font-size: 11px; line-height: 1; padding: 4px 6px; cursor: pointer;

@@ -671,6 +671,9 @@ function openSettings() {
 
 /* ---------- 版本更新记录（静态数据，离线可用，无需后端） ---------- */
 const CHANGELOG = [
+  { version: '3.33', date: '2026-07-19', items: [
+    '缩略图调整：取消缩略图上的「存图」按钮，将「分享」入口从卡片底部移到缩略图原「存图」位置（点缩略图即分享，更贴合发闲鱼场景）；卡片底部保留「复制信息」'
+  ]},
   { version: '3.32', date: '2026-07-19', items: [
     '存图改为「打开大图 + 长按保存到相册」（去掉原「下载成文件」逻辑），iOS/安卓/电脑统一体验，不再存成文件',
     '分享增加「复制信息」兜底按钮：系统分享面板没出现闲鱼时，可一键复制券文案去闲鱼粘贴发送；分享仍走系统面板选闲鱼（网页无法跳过选闲鱼+选会话两步）'
@@ -947,7 +950,7 @@ function couponCard(c, isSoldScope) {
   const img = c.image_filename
     ? `<div class="thumb-wrap">
          <img class="thumb" src="${uploadUrl(c.image_filename)}" data-img="${escapeHtml(c.image_filename)}" />
-         <button class="thumb-save" data-save="${escapeHtml(c.image_filename)}" data-name="${escapeHtml((c.merchant || 'coupon') + (c.coupon_code ? '_' + c.coupon_code : ''))}">↓ 存图</button>
+         <button class="thumb-share" data-act="share" data-id="${c.id}">↗ 分享</button>
        </div>`
     : `<div class="thumb" style="display:flex;align-items:center;justify-content:center;color:#ccc;font-size:11px">无图</div>`;
   const expClass = expired ? 'exp over' : 'exp';
@@ -970,7 +973,6 @@ function couponCard(c, isSoldScope) {
   }
   if (!isSoldScope) {
     actions += `<button class="btn ghost" data-act="copy" data-id="${c.id}">复制信息</button>`;
-    actions += `<button class="btn ghost" data-act="share" data-id="${c.id}">分享</button>`;
     if (canManage) actions += `<button class="btn ghost" data-act="edit" data-id="${c.id}">编辑</button>`;
   }
   if (canManage) actions += `<button class="btn danger" data-act="del" data-id="${c.id}">删除</button>`;
