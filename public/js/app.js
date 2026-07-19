@@ -552,6 +552,10 @@ function openSettings() {
 
 /* ---------- 版本更新记录（静态数据，离线可用，无需后端） ---------- */
 const CHANGELOG = [
+  { version: '3.22', date: '2026-07-18', items: [
+    '首页搜索结果底部新增数量提示：搜索时显示「搜索「x」找到 N 张券」，否则显示「共 N 张券」',
+    '修复搜索 0 条结果时数量提示缺失的问题'
+  ]},
   { version: '3.21', date: '2026-07-18', items: [
     '暂时取消底部常驻导航栏，保持页面简洁（子页面仍可通过统计卡片点击 / 设置入口切换）',
     '待结算卡片改显示「待结算金额」（金额，原张数），副文精简为「待结算金额」',
@@ -728,6 +732,7 @@ function renderList() {
   if (!list) return;
   if (!state.coupons.length) {
     list.innerHTML = `<div class="empty">这里还没有券～<br/>点右下角 + 快速入库吧</div>`;
+    if (!state.expiring) appendResultCount(list);
     return;
   }
 
@@ -740,12 +745,24 @@ function renderList() {
       (unsettled.length ? unsettled.map(c => couponCard(c, true)).join('') : `<div class="empty small">暂无未结算券</div>`) +
       groupHead('已结算', settled.length, '已回款') +
       (settled.length ? settled.map(c => couponCard(c, true)).join('') : `<div class="empty small">暂无已结算券</div>`);
+    if (!state.expiring) appendResultCount(list);
     bindListEvents();
     return;
   }
 
   list.innerHTML = state.coupons.map(c => couponCard(c, false)).join('');
+  if (!state.expiring) appendResultCount(list);
   bindListEvents();
+}
+
+// 列表底部结果数量提示（搜索时显示「搜索「x」找到 N 张券」，否则「共 N 张券」）
+function appendResultCount(list) {
+  const q = (state.q || '').trim();
+  const n = state.coupons.length;
+  const div = document.createElement('div');
+  div.className = 'list-count';
+  div.textContent = q ? `搜索「${q}」找到 ${n} 张券` : `共 ${n} 张券`;
+  list.appendChild(div);
 }
 
 function groupHead(title, count, sub) {
