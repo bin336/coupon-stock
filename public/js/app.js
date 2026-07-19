@@ -13,7 +13,8 @@ const state = {
   logs: false,        // 是否处于操作日志视图
   rankings: false,    // 是否处于数据报表（三大排行）视图
   expiring: false,    // 是否处于 7天内到期 视图
-  byMerchant: false,  // 是否处于「按商家」汇总视图
+  groupView: null,    // 汇总分组视图：null | 'merchant' | 'owner'
+  groupQ: '',         // 汇总页内搜索（按分组键商家/所有人过滤）
   faceFilter: null,   // 面值快捷筛选（精确匹配 amount，如 100）
   q: '',
   coupons: [],
@@ -131,8 +132,8 @@ async function loadData() {
   renderStats();
   if (state.settlement) {
     renderSettlement(state.coupons.filter(c => c.status === 'sold' && !c.settled));
-  } else if (state.byMerchant) {
-    renderByMerchant(state.coupons);
+  } else if (state.groupView) {
+    renderByGroup(state.coupons, state.groupView);
   } else {
     renderList();
   }
@@ -228,8 +229,8 @@ function renderApp() {
     bindExpiringToolbar();
     return;
   }
-  if (state.byMerchant) {
-    bindMerchantToolbar();
+  if (state.groupView) {
+    bindGroupToolbar(state.groupView);
     loadData();
     return;
   }
@@ -253,7 +254,9 @@ function renderApp() {
   });
 
   const bm = document.getElementById('btn-by-merchant');
-  if (bm) bm.onclick = openSummary;
+  if (bm) bm.onclick = () => openGroup('merchant');
+  const bo = document.getElementById('btn-by-owner');
+  if (bo) bo.onclick = () => openGroup('owner');
   const amtChips = document.getElementById('amount-chips');
   if (amtChips) amtChips.addEventListener('click', (e) => {
     const c = e.target.closest('.amt-chip');
@@ -302,7 +305,7 @@ function bindStatCards() {
   if (statExpiring) statExpiring.onclick = openExpiring;
 }
 
-/* ---------- 按商家汇总（同商家多面值一目了然） ---------- */
+/* ---------- 分组汇总（按商家 / 按所有人，同分组多面值一目了然） ---------- */
 // 面值快捷筛选 chip：取当前列表出现的面值（始终基于完整数据集，不受 faceFilter 影响）
 function denomChipsHtml() {
   const amounts = [...new Set((state.coupons || []).map(c => c.amount).filter(a => a != null))].sort((a, b) => a - b);
@@ -310,25 +313,34 @@ function denomChipsHtml() {
   return amounts.map(a => `<div class="chip amt-chip ${state.faceFilter === a ? 'active' : ''}" data-amount="${a}">${fmtMoney(a)}</div>`).join('');
 }
 
-async function openSummary() {
-  // 进入汇总：清空搜索与面值筛选，回到该 scope 下「按商家」全貌
-  state.byMerchant = true;
+// 分组键：merchant -> 商家名；owner -> 所有人名
+function groupKeyField(key) { return key === 'owner' ? 'owner_name' : 'merchant'; }
+function groupTitle(key) { return key === 'owner' ? '👤 按所有人汇总' : '📊 按商家汇总'; }
+function groupKeyOf(c, key) { return (c[groupKeyField(key)] || (key === 'owner' ? '（未指定所有人）' : '（未命名商家）')); }
+
+async function openGroup(key) {
+  // 进入汇总：清空搜索与面值筛选，回到该 scope 下分组全貌
+  state.groupView = key;
+  state.groupQ = '';
   state.q = ''; state.faceFilter = null;
   state.report = false; state.logs = false; state.settlement = false; state.rankings = false; state.expiring = false;
   renderApp(); loadData();
 }
 
-function renderByMerchant(coupons) {
+function renderByGroup(coupons, key) {
   const list = document.getElementById('list');
   if (!list) return;
   const groups = {};
   coupons.forEach(c => {
-    const m = c.merchant || '（未命名商家）';
+    const m = groupKeyOf(c, key);
     (groups[m] = groups[m] || []).push(c);
   });
-  const names = Object.keys(groups).sort((a, b) => a.localeCompare(b, 'zh'));
+  // 汇总页内搜索：按分组键（商家名/所有人名）过滤卡片
+  const gq = (state.groupQ || '').trim().toLowerCase();
+  let names = Object.keys(groups).sort((a, b) => a.localeCompare(b, 'zh'));
+  if (gq) names = names.filter(n => n.toLowerCase().includes(gq));
   if (!names.length) {
-    list.innerHTML = `<div class="empty">这里还没有券～<br/>点右下角 + 快速入库吧</div>`;
+    list.innerHTML = `<div class="empty">${gq ? '没有匹配的' + (key === 'owner' ? '所有人' : '商家') + '～' : '这里还没有券～<br/>点右下角 + 快速入库吧'}</div>`;
     return;
   }
   list.innerHTML = names.map(name => {
@@ -340,7 +352,7 @@ function renderByMerchant(coupons) {
     const totalFace = cs.reduce((s, c) => s + (Number(c.amount) || 0) * (Number(c.quantity) || 1), 0);
     const badges = amounts.map(a => {
       const qty = byAmt[a].reduce((s, c) => s + (Number(c.quantity) || 1), 0);
-      return `<button class="denom-badge" data-merchant="${escapeHtml(name)}" data-amount="${a}">${fmtMoney(a)} ×${qty}</button>`;
+      return `<button class="denom-badge" data-group="${escapeHtml(name)}" data-amount="${a}">${fmtMoney(a)} ×${qty}</button>`;
     }).join('');
     return `<div class="merchant-card">
       <div class="mc-head">
@@ -350,26 +362,26 @@ function renderByMerchant(coupons) {
       <div class="mc-badges">${badges}</div>
     </div>`;
   }).join('');
-  bindMerchantEvents();
+  bindGroupEvents(key);
 }
 
-function bindMerchantEvents() {
+function bindGroupEvents(key) {
   const list = document.getElementById('list');
   if (!list) return;
   list.querySelectorAll('.denom-badge').forEach(b => {
     b.onclick = () => {
-      // 下钻：平铺列表只看该商家该面值
-      state.byMerchant = false;
-      state.q = b.dataset.merchant;
+      // 下钻：平铺列表只看该分组值 + 该面值
+      state.groupView = null; state.groupQ = '';
+      state.q = b.dataset.group;
       state.faceFilter = Number(b.dataset.amount);
       renderApp(); loadData();
     };
   });
 }
 
-function bindMerchantToolbar() {
+function bindGroupToolbar(key) {
   const back = document.getElementById('btn-back');
-  if (back) back.onclick = () => { state.byMerchant = false; state.faceFilter = null; renderApp(); loadData(); };
+  if (back) back.onclick = () => { state.groupView = null; state.groupQ = ''; state.faceFilter = null; renderApp(); loadData(); };
   const chips = document.getElementById('chips');
   if (chips) chips.addEventListener('click', (e) => {
     const c = e.target.closest('.chip');
@@ -377,6 +389,11 @@ function bindMerchantToolbar() {
     state.scope = c.dataset.scope;
     chips.querySelectorAll('.chip').forEach(x => x.classList.toggle('active', x === c));
     loadData();
+  });
+  const gs = document.getElementById('group-search');
+  if (gs) gs.addEventListener('input', (e) => {
+    state.groupQ = e.target.value;
+    renderByGroup(state.coupons, key);
   });
 }
 
@@ -388,8 +405,8 @@ function refreshAmountChips() {
 
 /* ---------- 首页 ---------- */
 async function goHome() {
-  state.report = false; state.logs = false; state.settlement = false; state.rankings = false; state.expiring = false; state.byMerchant = false;
-  state.scope = 'default'; state.q = ''; state.faceFilter = null;
+  state.report = false; state.logs = false; state.settlement = false; state.rankings = false; state.expiring = false; state.groupView = null;
+  state.scope = 'default'; state.q = ''; state.faceFilter = null; state.groupQ = '';
   renderApp(); loadData(); loadUsers();
 }
 
@@ -450,10 +467,12 @@ function getToolbar() {
       <button class="btn primary" id="lf-go">查询</button>
     </div>`;
   }
-  if (state.byMerchant) {
+  if (state.groupView) {
+    const gkey = state.groupView;
     return `<div class="toolbar" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <button class="btn ghost" id="btn-back">← 返回</button>
-      <div class="tb-title">📊 按商家汇总</div>
+      <div class="tb-title">${groupTitle(gkey)}</div>
+      <input class="search" id="group-search" placeholder="${gkey === 'owner' ? '搜所有人…' : '搜商家…'}" value="${escapeHtml(state.groupQ)}" style="max-width:160px" />
       <div class="chips" id="chips">
         <div class="chip ${state.scope==='default'?'active':''}" data-scope="default">未售·未过期</div>
         <div class="chip ${state.scope==='all'?'active':''}" data-scope="all">全部</div>
@@ -473,12 +492,13 @@ function getToolbar() {
     </div>
     <div class="chips amount-chips" id="amount-chips">${denomChipsHtml()}</div>
     <button class="btn ghost" id="btn-by-merchant">📊 按商家</button>
+    <button class="btn ghost" id="btn-by-owner">👤 按所有人</button>
   </div>`;
 }
 
 /* ---------- 售出 / 利润报表 ---------- */
 async function openReport() {
-  state.report = true; state.rankings = false; state.logs = false; state.settlement = false; state.byMerchant = false; state.scope = 'default';
+  state.report = true; state.rankings = false; state.logs = false; state.settlement = false; state.groupView = null; state.groupQ = ''; state.scope = 'default';
   renderApp(); await loadReport();
 }
 function bindReportToolbar() {
@@ -553,7 +573,7 @@ function renderReport(data) {
 
 /* ---------- 数据报表（三大排行） ---------- */
 async function openRankings() {
-  state.rankings = true; state.report = false; state.logs = false; state.settlement = false; state.byMerchant = false; state.scope = 'default';
+  state.rankings = true; state.report = false; state.logs = false; state.settlement = false; state.groupView = null; state.groupQ = ''; state.scope = 'default';
   renderApp(); await loadRankings();
 }
 function bindRankingsToolbar() {
@@ -573,7 +593,7 @@ function soonDate() {
   return dt.getFullYear() + '-' + mm + '-' + dd;
 }
 async function openExpiring() {
-  state.report = false; state.logs = false; state.settlement = false; state.rankings = false; state.byMerchant = false; state.expiring = true;
+  state.report = false; state.logs = false; state.settlement = false; state.rankings = false; state.groupView = null; state.groupQ = ''; state.expiring = true;
   state.scope = 'default'; state.q = '';
   renderApp();
   try {
@@ -674,6 +694,13 @@ function openSettings() {
 
 /* ---------- 版本更新记录（静态数据，离线可用，无需后端） ---------- */
 const CHANGELOG = [
+  { version: '3.25', date: '2026-07-19', items: [
+    '首页新增「👤 按所有人」按钮，与「📊 按商家」并列：按所有人(owner_name)汇总，同样以面值标签展示各面值张数，可下钻',
+    '「按商家/按所有人」汇总页内新增搜索框，可按商家名/所有人名实时过滤分组卡片',
+    '录入弹窗商家名支持自动补全（datalist 下拉历史商家），避免「星巴克」/「星 巴克」分裂导致汇总对不上',
+    '录入弹窗新增「同商家再录」按钮：保留商家/过期/所有人/平台，清空金额与张数，便于快速录多面值（如美团100→50→20）',
+    '后端新增 GET /coupons/merchants 返回全部去重商家名（供自动补全）'
+  ]},
   { version: '3.24', date: '2026-07-19', items: [
     '新增「按商家」汇总视图：同一商家下各面值以标签呈现（如 ¥100 ×3 / ¥50 ×2），并显示批次数、总张数、总面值，一眼看清不同面值各多少张',
     '汇总视图内点击某个面值标签可下钻到「该商家+该面值」的平铺明细',
@@ -761,7 +788,7 @@ function openChangelog() {
 
 /* ---------- 操作日志 ---------- */
 async function openLogs() {
-  state.logs = true; state.report = false; state.rankings = false; state.settlement = false; state.byMerchant = false;
+  state.logs = true; state.report = false; state.rankings = false; state.settlement = false; state.groupView = null; state.groupQ = '';
   renderApp(); await loadLogs();
 }
 function bindLogToolbar() {
@@ -1018,7 +1045,7 @@ function bindListEvents() {
 
 /* ---------- 结算模块 ---------- */
 async function openSettlement() {
-  state.report = false; state.logs = false; state.rankings = false; state.byMerchant = false;
+  state.report = false; state.logs = false; state.rankings = false; state.groupView = null; state.groupQ = '';
   state.scope = 'sold';
   state.q = '';
   state.settlement = true;
@@ -1244,9 +1271,9 @@ function ownerSelect({ name, id, selected, cls, emptyLabel } = {}) {
 }
 
 /* ---------- 录入 / 编辑 弹窗 ---------- */
-function openCouponModal(coupon) {
+function openCouponModal(coupon, prefill) {
   const isEdit = !!coupon;
-  const c = coupon || {};
+  const c = coupon || prefill || {};
   const today = todayLocal();
   const owner = c.owner_name || (state.user ? state.user.display_name : '');
   $modal.innerHTML = `
@@ -1256,7 +1283,8 @@ function openCouponModal(coupon) {
       <form id="coupon-form">
         <div class="field">
           <label>商家名称 <span class="req">*</span></label>
-          <input name="merchant" value="${escapeHtml(c.merchant || '')}" placeholder="如：星巴克 / 美团" required />
+          <input name="merchant" list="merchant-list" value="${escapeHtml(c.merchant || '')}" placeholder="如：星巴克 / 美团（输入可选历史商家）" required />
+          <datalist id="merchant-list"></datalist>
         </div>
         <div class="two">
           <div class="field">
@@ -1307,6 +1335,7 @@ function openCouponModal(coupon) {
         <div id="ocr-status" class="ocr-status" style="display:none"></div>
         <div class="modal-actions">
           <button type="button" class="btn ghost" data-close="1">取消</button>
+          <button type="button" class="btn ghost" id="btn-same-merchant">同商家再录</button>
           <button type="submit" class="btn primary">${isEdit ? '保存修改' : '入库'}</button>
         </div>
       </form>
@@ -1414,6 +1443,32 @@ function openCouponModal(coupon) {
       toast(err.message || '保存失败');
     }
   });
+
+  // 商家自动补全：拉取全部去重商家名填入 datalist，避免「星巴克」/「星 巴克」分裂
+  (async () => {
+    try {
+      const data = await api('GET', '/coupons/merchants');
+      const dl = document.getElementById('merchant-list');
+      if (dl) dl.innerHTML = (data.merchants || []).map(m => `<option value="${escapeHtml(m)}"></option>`).join('');
+    } catch (e) { /* 自动补全失败不影响录入 */ }
+  })();
+
+  // 同商家再录一张：保留商家/过期/所有人/平台，清空金额与张数，快速录多面值
+  const sameBtn = document.getElementById('btn-same-merchant');
+  if (sameBtn) sameBtn.onclick = () => {
+    const form = document.getElementById('coupon-form');
+    if (!form) return;
+    const get = n => { const el = form.querySelector(`[name="${n}"]`); return el ? el.value.trim() : ''; };
+    const merchant = get('merchant');
+    if (!merchant) { toast('请先填写商家名称'); form.querySelector('[name="merchant"]').focus(); return; }
+    openCouponModal(null, {
+      merchant,
+      expiry_date: get('expiry_date'),
+      owner_name: get('owner_name'),
+      platform: get('platform')
+    });
+    setTimeout(() => { const a = document.querySelector('#coupon-form [name="amount"]'); if (a) a.focus(); }, 60);
+  };
 
   bindClose();
 }

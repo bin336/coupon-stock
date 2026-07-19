@@ -143,6 +143,14 @@ router.get('/popular-merchants', authMiddleware, (req, res) => {
   res.json({ merchants: rows.map(r => r.merchant) });
 });
 
+// 全部去重商家名（录入自动补全用，避免「星巴克」/「星 巴克」分裂）
+router.get('/merchants', authMiddleware, (req, res) => {
+  const rows = db.prepare(
+    `SELECT DISTINCT merchant FROM coupons WHERE merchant IS NOT NULL AND merchant <> '' ORDER BY merchant`
+  ).all();
+  res.json({ merchants: rows.map(r => r.merchant) });
+});
+
 // 售出 / 利润报表：按「所有人」分组，支持时间段（sold_at）与所有人筛选。仅管理员。
 router.get('/report', authMiddleware, adminOnly, (req, res) => {
   const { owner, start, end } = req.query;
