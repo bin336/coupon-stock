@@ -671,6 +671,10 @@ function openSettings() {
 
 /* ---------- 版本更新记录（静态数据，离线可用，无需后端） ---------- */
 const CHANGELOG = [
+  { version: '3.32', date: '2026-07-19', items: [
+    '存图改为「打开大图 + 长按保存到相册」（去掉原「下载成文件」逻辑），iOS/安卓/电脑统一体验，不再存成文件',
+    '分享增加「复制信息」兜底按钮：系统分享面板没出现闲鱼时，可一键复制券文案去闲鱼粘贴发送；分享仍走系统面板选闲鱼（网页无法跳过选闲鱼+选会话两步）'
+  ]},
   { version: '3.31', date: '2026-07-19', items: [
     '搜索优化：分词前对「中文↔数字」自动补空格，使「许家菜100」与「许家菜 100」等价（移动端常连打不带空格）；纯字母数字券号不受影响'
   ]},
@@ -965,6 +969,7 @@ function couponCard(c, isSoldScope) {
     actions += `<button class="btn ${settled ? 'ghost' : 'primary'}" data-act="settle" data-id="${c.id}">${settled ? '✓ 已结算' : '标记结算'}</button>`;
   }
   if (!isSoldScope) {
+    actions += `<button class="btn ghost" data-act="copy" data-id="${c.id}">复制信息</button>`;
     actions += `<button class="btn ghost" data-act="share" data-id="${c.id}">分享</button>`;
     if (canManage) actions += `<button class="btn ghost" data-act="edit" data-id="${c.id}">编辑</button>`;
   }
@@ -1021,6 +1026,12 @@ function bindListEvents() {
       } else if (act === 'edit') {
         const c = state.coupons.find(x => x.id == id);
         if (c) openCouponModal(c);
+      } else if (act === 'copy') {
+        const c = state.coupons.find(x => x.id == id);
+        if (!c) return;
+        const text = buildShareText(c);
+        try { await navigator.clipboard.writeText(text); toast('券信息已复制，去闲鱼粘贴发送'); }
+        catch (e) { toast('复制失败：' + text); }
       } else if (act === 'share') {
         const c = state.coupons.find(x => x.id == id);
         if (c) shareToXianyu(c.image_filename, c);
@@ -1702,25 +1713,13 @@ function openBatchModal() {
   bindClose();
 }
 
-/* ---------- 保存券图片到手机（iOS 不支持 download，走长按保存） ---------- */
+/* ---------- 保存券图片到手机（网页无法自动写相册，统一走「打开大图 + 长按保存」） ---------- */
 function saveImage(file, fallbackName) {
   if (!file) return;
   const url = uploadUrl(file);
-  const ua = navigator.userAgent || '';
-  const isIOS = /iPhone|iPad|iPod/i.test(ua);
-  if (isIOS) {
-    window.open(url, '_blank');
-    toast('已打开图片，长按即可保存到相册');
-    return;
-  }
-  const name = ((fallbackName || 'coupon').replace(/[\\/:*?"<>|]/g, '_')) + '_' + Date.now() + '.png';
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  toast('图片已保存到下载目录');
+  // 浏览器安全限制：网页不能自动写相册。打开图片后由用户长按保存到相册（iOS/安卓通用），不再存成文件
+  window.open(url, '_blank');
+  toast('已打开图片，长按即可保存到相册');
 }
 
 /* ---------- 分享到闲鱼（系统分享面板，选闲鱼后挑会话发送） ---------- */
