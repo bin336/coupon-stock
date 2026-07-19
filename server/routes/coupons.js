@@ -76,7 +76,11 @@ router.get('/', authMiddleware, (req, res) => {
   }
   if (q) {
     // 分词搜索：每个空格分隔的词都要命中任一字段（商家/券号/所有人/平台/备注/拼音/面值）
-    const tokens = String(q).trim().split(/\s+/).filter(Boolean);
+    // 预处理：中文与数字之间自动补空格，使「许家菜100」等价于「许家菜 100」（移动端常连打不带空格）
+    const normQ = String(q).trim()
+      .replace(/([\u4e00-\u9fff])(\d)/g, '$1 $2')
+      .replace(/(\d)([\u4e00-\u9fff])/g, '$1 $2');
+    const tokens = normQ.split(/\s+/).filter(Boolean);
     tokens.forEach(tok => {
       const like = '%' + tok + '%';
       const likePy = '%' + tok.toLowerCase() + '%';
