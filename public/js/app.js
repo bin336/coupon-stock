@@ -357,7 +357,7 @@ function renderByGroup(coupons, key) {
     return `<div class="merchant-card">
       <div class="mc-head">
         <span class="mc-name">${escapeHtml(name)}</span>
-        <span class="mc-meta">${cs.length} 批次 · 共 ${totalQty} 张 · 面值 ${fmtMoney(totalFace)}</span>
+        <span class="mc-meta">共 ${totalQty} 张 · 面值 ${fmtMoney(totalFace)}</span>
       </div>
       <div class="mc-badges">${badges}</div>
     </div>`;
@@ -699,7 +699,8 @@ const CHANGELOG = [
     '「按商家/按所有人」汇总页内新增搜索框，可按商家名/所有人名实时过滤分组卡片',
     '录入弹窗商家名支持自动补全（datalist 下拉历史商家），避免「星巴克」/「星 巴克」分裂导致汇总对不上',
     '录入弹窗新增「同商家再录」按钮：保留商家/过期/所有人/平台，清空金额与张数，便于快速录多面值（如美团100→50→20）',
-    '后端新增 GET /coupons/merchants 返回全部去重商家名（供自动补全）'
+    '后端新增 GET /coupons/merchants 返回全部去重商家名（供自动补全）',
+    '汇总卡去掉「N 批次」字样，仅保留「共 N 张 · 面值 ¥X」更简洁'
   ]},
   { version: '3.24', date: '2026-07-19', items: [
     '新增「按商家」汇总视图：同一商家下各面值以标签呈现（如 ¥100 ×3 / ¥50 ×2），并显示批次数、总张数、总面值，一眼看清不同面值各多少张',
