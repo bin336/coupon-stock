@@ -700,7 +700,8 @@ const CHANGELOG = [
     '录入弹窗商家名支持自动补全（datalist 下拉历史商家），避免「星巴克」/「星 巴克」分裂导致汇总对不上',
     '录入弹窗新增「同商家再录」按钮：保留商家/过期/所有人/平台，清空金额与张数，便于快速录多面值（如美团100→50→20）',
     '后端新增 GET /coupons/merchants 返回全部去重商家名（供自动补全）',
-    '汇总卡去掉「N 批次」字样，仅保留「共 N 张 · 面值 ¥X」更简洁'
+    '汇总卡去掉「N 批次」字样，仅保留「共 N 张 · 面值 ¥X」更简洁',
+    '修复 OCR 识别出过期时间后仍提示"请填写过期时间"无法入库的问题（程序设值不触发校验清除，现设值后主动清除；同时兼容斜杠日期格式）'
   ]},
   { version: '3.24', date: '2026-07-19', items: [
     '新增「按商家」汇总视图：同一商家下各面值以标签呈现（如 ¥100 ×3 / ¥50 ×2），并显示批次数、总张数、总面值，一眼看清不同面值各多少张',
@@ -1373,6 +1374,14 @@ function openCouponModal(coupon, prefill) {
     const el = document.querySelector(`#coupon-form [name="${name}"]`);
     if (!el || val === '' || val == null) return;
     if (isEdit && el.value.trim() !== '') return;
+    // 过期时间：OCR 可能返回 2026/07/17，<input type="date"> 只接受 YYYY-MM-DD
+    if (name === 'expiry_date') {
+      val = String(val).replace(/\//g, '-');
+      el.value = val;
+      // 程序设值不触 input/change 事件，必须手动清除校验错误
+      if (typeof clearExpiryNeeded === 'function') clearExpiryNeeded();
+      return;
+    }
     el.value = val;
     el.classList.add('ocr-hit');
     const lbl = el.closest('.field') && el.closest('.field').querySelector('label');
