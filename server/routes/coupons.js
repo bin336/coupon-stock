@@ -4,6 +4,7 @@ const db = require('../db');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const { authMiddleware, adminOnly } = require('../middleware/auth');
 
 // 拼音搜索：pinyin-pro 为可选依赖，缺失时自动降级（仅失去拼音/首字母搜索能力，不影响其它功能）
@@ -54,6 +55,37 @@ function logOp(req, action, target, detail) {
     username: req.user ? req.user.username : '',
     action, target, detail
   });
+}
+
+// 文件内容 MD5（重复录入的图片指纹比对，用于拦截同一张截图被多次入库）
+function computeFileHash(filePath) {
+  try { return crypto.createHash('md5').update(fs.readFileSync(filePath)).digest('hex'); }
+  catch (e) { return null; }
+}
+
+// 查找与待录入券重复的「未售」券：按券号精确匹配 + 按图片指纹匹配
+// 返回 [{id, merchant, amount, coupon_code, expiry_date, quantity, match_by}]
+function findDuplicates({ coupon_code, image_hash }) {
+  const conds = [];
+  const params = [];
+  if (coupon_code) {
+    conds.push('(coupon_code IS NOT NULL AND coupon_code <> ? AND coupon_code = ?)');
+    params.push('', coupon_code);
+  }
+  if (image_hash) {
+    conds.push('(image_hash IS NOT NULL AND image_hash = ?)');
+    params.push(image_hash);
+  }
+  if (!conds.length) return [];
+  const rows = db.prepare(
+    `SELECT id, merchant, amount, coupon_code, expiry_date, quantity, image_hash
+     FROM coupons WHERE status = 'unsold' AND (${conds.join(' OR ')})`
+  ).all(...params);
+  return rows.map(r => ({
+    id: r.id, merchant: r.merchant, amount: r.amount,
+    coupon_code: r.coupon_code, expiry_date: r.expiry_date, quantity: r.quantity,
+    match_by: (image_hash && r.image_hash === image_hash) ? 'image' : 'code'
+  }));
 }
 
 // 列表 / 筛选 / 搜索
@@ -244,11 +276,19 @@ router.post('/', authMiddleware, upload.single('image'), (req, res) => {
   const note = (b.note || '').toString().trim();
   const platform = (b.platform || '').toString().trim();
   const image_filename = req.file ? req.file.filename : null;
+  const image_hash = req.file ? computeFileHash(req.file.path) : null;
+  const force = String(b.force || '').trim() === '1';
+
+  // 重复录入拦截：入库前比对未售券（券号 / 图片指纹），命中则提示确认，不入库
+  if (!force) {
+    const dups = findDuplicates({ coupon_code, image_hash });
+    if (dups.length) return res.status(409).json({ error: '疑似重复录入', duplicates: dups });
+  }
 
   const info = db.prepare(`INSERT INTO coupons
-    (merchant, amount, coupon_code, quantity, expiry_date, cost, owner_name, platform, owner_user_id, image_filename, note, created_by, pinyin)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-    .run(merchant, amount, coupon_code, quantity, expiry_date, cost, owner_name, platform, req.user.id, image_filename, note, req.user.id, toPinyin(merchant, owner_name, platform, note));
+    (merchant, amount, coupon_code, quantity, expiry_date, cost, owner_name, platform, owner_user_id, image_filename, image_hash, note, created_by, created_at, pinyin)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(merchant, amount, coupon_code, quantity, expiry_date, cost, owner_name, platform, req.user.id, image_filename, image_hash, note, req.user.id, nowLocal(), toPinyin(merchant, owner_name, platform, note));
   const row = db.prepare('SELECT * FROM coupons WHERE id = ?').get(info.lastInsertRowid);
   logOp(req, 'add_coupon', merchant, `面值¥${amount} ×${quantity}张 成本¥${cost} 所有人:${owner_name}`);
   res.json({ coupon: row });
@@ -264,12 +304,27 @@ router.post('/batch', authMiddleware, uploadArray, (req, res) => {
   if (!Array.isArray(items) || items.length !== files.length) {
     return res.status(400).json({ error: '条目数量与图片数量不一致' });
   }
+  const force = String(req.body.force || '').trim() === '1';
+
+  // 重复录入拦截：逐张比对未售券，命中则整批返回疑似重复列表，由前端确认后强制录入
+  if (!force) {
+    const dups = [];
+    files.forEach((file, i) => {
+      const b = items[i] || {};
+      const coupon_code = (b.coupon_code || '').toString().trim();
+      const image_hash = computeFileHash(file.path);
+      const found = findDuplicates({ coupon_code, image_hash });
+      if (found.length) dups.push({ index: i, file: file.originalname, matches: found });
+    });
+    if (dups.length) return res.status(409).json({ error: '疑似重复录入', duplicates: dups });
+  }
+
   const created = [];
   const createdDetails = [];
   const errors = [];
   const insert = db.prepare(`INSERT INTO coupons
-    (merchant, amount, coupon_code, quantity, expiry_date, cost, owner_name, platform, owner_user_id, image_filename, note, created_by, pinyin)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+    (merchant, amount, coupon_code, quantity, expiry_date, cost, owner_name, platform, owner_user_id, image_filename, image_hash, note, created_by, created_at, pinyin)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
   const tx = db.transaction(() => {
     files.forEach((file, i) => {
       const b = items[i] || {};
@@ -283,8 +338,9 @@ router.post('/batch', authMiddleware, uploadArray, (req, res) => {
       const owner_name = (b.owner_name || '').toString().trim() || req.user.display_name;
       const platform = (b.platform || '').toString().trim();
       const note = (b.note || '').toString().trim();
+      const image_hash = computeFileHash(file.path);
       try {
-        const info = insert.run(merchant, amount, coupon_code, quantity, expiry_date, cost, owner_name, platform, req.user.id, file.filename, note, req.user.id, toPinyin(merchant, owner_name, platform, note));
+        const info = insert.run(merchant, amount, coupon_code, quantity, expiry_date, cost, owner_name, platform, req.user.id, file.filename, image_hash, note, req.user.id, nowLocal(), toPinyin(merchant, owner_name, platform, note));
         created.push(info.lastInsertRowid);
         createdDetails.push({ merchant, amount, quantity, owner_name });
       } catch (e) {
@@ -304,6 +360,39 @@ router.post('/batch', authMiddleware, uploadArray, (req, res) => {
     logOp(req, 'batch_add', target, detail);
   }
   res.json({ count: created.length, created, errors });
+});
+
+// 每日运营小结：今日录入 / 售出 / 结算额 + 当前库存总值 + 将过期（开局一眼看全局）
+router.get('/daily', authMiddleware, (req, res) => {
+  const today = todayLocal();
+  const start = today + ' 00:00:00';
+  const end = today + ' 23:59:59';
+  const all = db.prepare('SELECT * FROM coupons').all();
+  const inRange = t => t && t >= start && t <= end;
+  const added = all.filter(c => inRange(c.created_at));
+  const addedFace = added.reduce((s, c) => s + (c.amount || 0) * (c.quantity || 1), 0);
+  const soldToday = all.filter(c => inRange(c.sold_at));
+  const soldFace = soldToday.reduce((s, c) => s + (c.amount || 0) * (c.quantity || 1), 0);
+  const settledToday = all.filter(c => inRange(c.settled_at));
+  const settledAmount = settledToday.reduce((s, c) => s + (parseFloat(c.settle_amount) || 0), 0);
+  const unsoldUnexpired = all.filter(c => c.status === 'unsold' && (!c.expiry_date || c.expiry_date >= today));
+  const faceValue = unsoldUnexpired.reduce((s, c) => s + (c.amount || 0) * (c.quantity || 1), 0);
+  // 7 天内到期
+  const [y, m, d] = today.split('-').map(Number);
+  const dt = new Date(y, m - 1, d); dt.setDate(dt.getDate() + 7);
+  const off = dt.getTimezoneOffset();
+  const soon = new Date(dt.getTime() - off * 60000).toISOString().slice(0, 10);
+  const expiringSoon = unsoldUnexpired.filter(c => c.expiry_date && c.expiry_date <= soon).length;
+  const r = n => Math.round(n * 100) / 100;
+  res.json({
+    added_count: added.length,
+    added_face: r(addedFace),
+    sold_count: soldToday.length,
+    sold_face: r(soldFace),
+    settled_amount: r(settledAmount),
+    inventory_value: r(faceValue),
+    expiring_soon: expiringSoon
+  });
 });
 
 // 详情
@@ -389,7 +478,7 @@ router.post('/:id/settle', authMiddleware, adminOnly, (req, res) => {
   if (row.status !== 'sold') return res.status(400).json({ error: '只有已售出的券才能标记结算' });
   if (row.settled) {
     // 取消结算：仅翻转结算状态（售出价/结算金额保留，便于重新结算）
-    db.prepare("UPDATE coupons SET settled = 0, updated_at = datetime('now') WHERE id = ?").run(row.id);
+    db.prepare("UPDATE coupons SET settled = 0, settled_at = NULL, updated_at = datetime('now') WHERE id = ?").run(row.id);
     logOp(req, 'unsettle', row.merchant, `取消结算 #${row.id}`);
     return res.json({ ok: true, settled: false });
   }
@@ -398,7 +487,7 @@ router.post('/:id/settle', authMiddleware, adminOnly, (req, res) => {
   if (!(sp >= 0)) return res.status(400).json({ error: '请先标记售出并填写售出价' });
   const fee = Math.round(sp * 0.016 * 100) / 100;
   const amt = Math.round((sp - fee) * 100) / 100;
-  db.prepare("UPDATE coupons SET settled = 1, sold_price = ?, settle_amount = ?, updated_at = datetime('now') WHERE id = ?").run(sp, amt, row.id);
+  db.prepare("UPDATE coupons SET settled = 1, sold_price = ?, settle_amount = ?, settled_at = ?, updated_at = datetime('now') WHERE id = ?").run(sp, amt, nowLocal(), row.id);
   logOp(req, 'settle', row.merchant, `结算金额¥${amt} #${row.id}`);
   res.json({ ok: true, settled: true, sold_price: sp, settle_amount: amt });
 });

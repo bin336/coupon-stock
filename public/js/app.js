@@ -19,6 +19,7 @@ const state = {
   q: '',
   coupons: [],
   stats: {},
+  daily: null,
   users: [],
   reportFilters: { owner: '', start: '', end: '' },
   logFilters: { action: '', user: '', q: '', start: '', end: '' }
@@ -57,7 +58,12 @@ async function api(method, path, body, isForm) {
   const res = await fetch('/api' + path, { method, headers, body: payload });
   if (res.status === 401) { logout(); throw new Error('登录已失效'); }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || '请求失败');
+  if (!res.ok) {
+    const err = new Error(data.error || '请求失败');
+    err.data = data;        // 透传响应体（如重复录入的 duplicates 列表）
+    err.status = res.status;
+    throw err;
+  }
   return data;
 }
 function uploadUrl(file) {
@@ -123,12 +129,14 @@ function buildQuery() {
   return p.toString();
 }
 async function loadData() {
-  const [list, stats] = await Promise.all([
+  const [list, stats, daily] = await Promise.all([
     api('GET', '/coupons?' + buildQuery()),
-    api('GET', '/coupons/stats')
+    api('GET', '/coupons/stats'),
+    api('GET', '/coupons/daily')
   ]);
   state.coupons = list.coupons;
   state.stats = stats;
+  state.daily = daily;
   renderStats();
   if (state.settlement) {
     renderSettlement(state.coupons.filter(c => c.status === 'sold' && !c.settled));
@@ -191,6 +199,17 @@ function renderApp() {
       <div class="label">已售出</div>
       <div class="value">${s.sold || 0}</div>
       <div class="sub">面值 ${fmtMoney(s.sold_face_value)}</div>
+    </div>
+  </div>
+
+  <div class="daily" id="daily-card">
+    <div class="daily-title">📅 今日运营</div>
+    <div class="daily-grid">
+      <div class="dstat"><div class="dval" id="d-added">-</div><div class="dlabel">今日录入</div></div>
+      <div class="dstat"><div class="dval" id="d-sold">-</div><div class="dlabel">今日售出</div></div>
+      <div class="dstat"><div class="dval" id="d-settled">-</div><div class="dlabel">今日结算额</div></div>
+      <div class="dstat"><div class="dval" id="d-inv">-</div><div class="dlabel">库存总值</div></div>
+      <div class="dstat alert"><div class="dval" id="d-exp">-</div><div class="dlabel">7天内到期</div></div>
     </div>
   </div>
 
@@ -898,6 +917,19 @@ function renderStats() {
     if (el) el.textContent = e.val;
     if (e.sub) { const sub = container.querySelector(e.sub); if (sub) sub.textContent = e.subText; }
   });
+  renderDaily();
+}
+
+// 今日运营卡片：用 /coupons/daily 的数据填充（开局一眼看全局）
+function renderDaily() {
+  const d = state.daily;
+  if (!d) return;
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  set('d-added', (d.added_count || 0) + ' 张');
+  set('d-sold', (d.sold_count || 0) + ' 张');
+  set('d-settled', '¥' + fmtMoney(d.settled_amount || 0));
+  set('d-inv', '¥' + fmtMoney(d.inventory_value || 0));
+  set('d-exp', (d.expiring_soon || 0) + ' 张');
 }
 
 function renderList() {
@@ -1490,22 +1522,36 @@ function openCouponModal(coupon, prefill) {
     runOcr(f);
   });
 
+  // 提交（可带 force=1 强制越过重复录入拦截）
+  async function doSubmit(force) {
+    const fd2 = new FormData(form);
+    if (!input.files.length) fd2.delete('image');  // 未选新图时不传 image（编辑时保留旧图）
+    if (force) fd2.set('force', '1');
+    if (isEdit) await api('PUT', '/coupons/' + c.id, fd2, true);
+    else await api('POST', '/coupons', fd2, true);
+  }
+
   document.getElementById('coupon-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const form = e.target;
     const btn = form.querySelector('button[type="submit"]');
     if (btn && btn.disabled) return;            // 防重复提交：请求期间已锁则忽略连点
     if (btn) { btn.dataset.label = btn.textContent; btn.textContent = isEdit ? '保存中…' : '入库中…'; btn.disabled = true; }
-    const fd = new FormData(form);
-    // 未选新图时不传 image 字段（编辑时保留旧图）
-    if (!input.files.length) fd.delete('image');
     try {
-      if (isEdit) await api('PUT', '/coupons/' + c.id, fd, true);
-      else await api('POST', '/coupons', fd, true);
+      await doSubmit(false);
       closeModal();
       toast(isEdit ? '已保存' : '入库成功');
       loadData();
     } catch (err) {
+      const dups = err.data && err.data.duplicates;
+      if (dups && dups.length) {              // 疑似重复：弹确认，确认后强制录入
+        if (btn) { btn.disabled = false; btn.textContent = btn.dataset.label || (isEdit ? '保存修改' : '入库'); }
+        showDuplicateConfirm(dups, () => {
+          doSubmit(true).then(() => { closeModal(); toast('已录入'); loadData(); })
+            .catch(e2 => { toast(e2.message || '保存失败'); if (btn) { btn.disabled = false; btn.textContent = btn.dataset.label || (isEdit ? '保存修改' : '入库'); } });
+        });
+        return;
+      }
       toast(err.message || '保存失败');
       if (btn) { btn.disabled = false; btn.textContent = btn.dataset.label || (isEdit ? '保存修改' : '入库'); }  // 失败恢复可重试
     }
@@ -1684,11 +1730,8 @@ function openBatchModal() {
     toast('已应用到全部');
   };
 
-  document.getElementById('batch-submit').onclick = async () => {
-    if (!rows.length) { toast('请先选择截图'); return; }
-    const btn = document.getElementById('batch-submit');
-    if (btn && btn.disabled) return;            // 防重复提交：请求期间已锁则忽略连点
-    if (btn) { btn.dataset.label = btn.textContent; btn.textContent = '入库中…'; btn.disabled = true; }
+  // 批量提交（可带 force=1 强制越过重复录入拦截）
+  async function submitBatch(force) {
     const items = rows.map(rec => {
       const v = n => rec.node.querySelector(`[name="${n}"]`).value.trim();
       return {
@@ -1704,21 +1747,65 @@ function openBatchModal() {
       };
     });
     const missing = items.filter(it => !it.merchant).length;
-    if (missing) { toast(`有 ${missing} 张未填商家名称`); }
+    if (missing) { toast(`有 ${missing} 张未填商家名称`); return; }
     const fd = new FormData();
     rows.forEach(rec => fd.append('images', rec.file));
     fd.append('items', JSON.stringify(items));
+    if (force) fd.set('force', '1');
+    const data = await api('POST', '/coupons/batch', fd, true);
+    const ok = data.count || 0;
+    const errs = data.errors || [];
+    if (errs.length) { toast(`入库 ${ok} 张，${errs.length} 张失败（详见控制台）`); console.warn('批量入库失败项：', errs); }
+    else toast(`成功入库 ${ok} 张`);
+    if (ok > 0) { closeModal(); loadData(); }
+  }
+
+  document.getElementById('batch-submit').onclick = async () => {
+    if (!rows.length) { toast('请先选择截图'); return; }
+    const btn = document.getElementById('batch-submit');
+    if (btn && btn.disabled) return;            // 防重复提交：请求期间已锁则忽略连点
+    if (btn) { btn.dataset.label = btn.textContent; btn.textContent = '入库中…'; btn.disabled = true; }
     try {
-      const data = await api('POST', '/coupons/batch', fd, true);
-      const ok = data.count || 0;
-      const errs = data.errors || [];
-      if (errs.length) { toast(`入库 ${ok} 张，${errs.length} 张失败（详见控制台）`); console.warn('批量入库失败项：', errs); }
-      else toast(`成功入库 ${ok} 张`);
-      if (ok > 0) { closeModal(); loadData(); }
-    } catch (e) { toast(e.message || '批量入库失败'); }
-    finally { if (btn) { btn.disabled = false; btn.textContent = btn.dataset.label || '全部入库'; } }  // 恢复可重试（成功关弹窗无影响）
+      await submitBatch(false);
+    } catch (e) {
+      const dups = e.data && e.data.duplicates;
+      if (dups && dups.length) {              // 疑似重复：弹确认，确认后整批强制录入
+        if (btn) { btn.disabled = false; btn.textContent = btn.dataset.label || '全部入库'; }
+        showDuplicateConfirm(dups, () => {
+          submitBatch(true).catch(e2 => { toast(e2.message || '批量入库失败'); if (btn) { btn.disabled = false; btn.textContent = btn.dataset.label || '全部入库'; } });
+        }, true);
+        return;
+      }
+      toast(e.message || '批量入库失败');
+    } finally { if (btn) { btn.disabled = false; btn.textContent = btn.dataset.label || '全部入库'; } }  // 恢复可重试（成功关弹窗无影响）
   };
 
+  bindClose();
+}
+
+/* ---------- 重复录入确认弹窗 ---------- */
+function showDuplicateConfirm(dups, onConfirm, isBatch) {
+  const fmt = d => `${escapeHtml(d.merchant || '?')} ¥${(d.amount || 0)} ×${(d.quantity || 1)}`
+    + (d.coupon_code ? ` 券号${escapeHtml(d.coupon_code)}` : '')
+    + `（${d.match_by === 'image' ? '图片相同' : '券号相同'}）`;
+  const items = dups.map(d => {
+    const prefix = isBatch ? `第${(d.index != null ? d.index + 1 : '?')}张：` : '';
+    const matches = (d.matches && d.matches.length ? d.matches : [d]).map(fmt).join('；');
+    return `<li>${prefix}${matches}</li>`;
+  }).join('');
+  $modal.innerHTML = `
+  <div class="modal-mask" data-close="1">
+    <div class="modal dup-modal" onclick="event.stopPropagation()">
+      <h3>⚠️ 疑似重复录入</h3>
+      <p class="dup-tip">以下券与现有「未售」券高度相似，确认仍要录入？</p>
+      <ul class="dup-list">${items}</ul>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" data-close="1">取消</button>
+        <button type="button" class="btn danger" id="dup-confirm">仍要录入</button>
+      </div>
+    </div>
+  </div>`;
+  document.getElementById('dup-confirm').onclick = () => { closeModal(); onConfirm(); };
   bindClose();
 }
 

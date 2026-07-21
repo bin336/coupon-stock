@@ -152,6 +152,12 @@ CREATE TABLE IF NOT EXISTS operation_log (
       if (!cols.includes('sold_by_name')) {
         _db.exec("ALTER TABLE coupons ADD COLUMN sold_by_name TEXT");
       }
+      if (!cols.includes('image_hash')) {
+        _db.exec("ALTER TABLE coupons ADD COLUMN image_hash TEXT");
+      }
+      if (!cols.includes('settled_at')) {
+        _db.exec("ALTER TABLE coupons ADD COLUMN settled_at TEXT");
+      }
     } catch (e) { console.error('[migrate]', e.message); }
 
     // 首次启动创建管理员

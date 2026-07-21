@@ -70,6 +70,22 @@ body {
 .stat.alert .value { color: var(--warn); }
 .stat .sub { font-size: 11px; color: var(--muted); }
 
+/* 今日运营 */
+.daily { margin: 4px 14px 0; background: var(--card); border-radius: 16px; padding: 12px 14px; box-shadow: var(--shadow); }
+.daily-title { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+.daily-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.dstat { text-align: center; background: #fafafa; border-radius: 10px; padding: 8px 2px; }
+.dstat.alert { background: #fff3ef; }
+.dstat .dval { font-size: 15px; font-weight: 800; color: var(--accent); line-height: 1.15; }
+.dstat.alert .dval { color: var(--warn); }
+.dstat .dlabel { font-size: 10px; color: var(--muted); margin-top: 3px; }
+
+/* 重复录入确认弹窗 */
+.dup-modal { max-width: 360px; }
+.dup-tip { font-size: 13px; color: var(--muted); margin: 4px 0 10px; }
+.dup-list { margin: 0 0 6px; padding-left: 18px; max-height: 42vh; overflow: auto; }
+.dup-list li { font-size: 13px; margin-bottom: 6px; word-break: break-all; }
+
 /* ---------- 筛选 ---------- */
 .toolbar { padding: 12px 14px 6px; }
 .search {
