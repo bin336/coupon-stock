@@ -193,7 +193,7 @@ function renderApp() {
     <div class="stat alert clickable" id="stat-expiring" style="cursor:pointer">
       <div class="label">7天内到期</div>
       <div class="value">${s.expiring_soon || 0}</div>
-      <div class="sub">点此查看 · 需尽快售出</div>
+      <div class="sub">需尽快售出</div>
     </div>
     <div class="stat clickable" id="stat-sold" style="cursor:pointer">
       <div class="label">已售出</div>
@@ -422,7 +422,7 @@ function getToolbar() {
     return `<div class="toolbar">
       <button class="btn ghost" id="btn-back">← 返回</button>
       <div class="tb-title">⏰ 7天内到期</div>
-      <span class="gh-sub" id="exp-count"></span>
+      <span class="exp-badge" id="exp-count">—</span>
     </div>`;
   }
   if (state.settlement) {
