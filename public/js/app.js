@@ -1656,9 +1656,19 @@ function openBatchModal() {
             ${ownerSelect({ id: 'bc-owner', selected: state.user ? state.user.display_name : '' })}
           </div>
         </div>
-        <div class="field" style="margin:10px 0 0">
-          <label>成本（每张，可留空）</label>
-          <input id="bc-cost" type="number" step="0.01" placeholder="0" />
+        <div class="three">
+          <div class="field" style="margin:10px 0 0">
+            <label>成本（每张，可留空）</label>
+            <input id="bc-cost" type="number" step="0.01" placeholder="0" />
+          </div>
+          <div class="field" style="margin:10px 0 0">
+            <label>平台</label>
+            <input id="bc-platform" placeholder="选填" />
+          </div>
+          <div class="field" style="margin:10px 0 0">
+            <label>备注</label>
+            <input id="bc-note" placeholder="选填" />
+          </div>
         </div>
         <button class="btn ghost" id="bc-apply" type="button">应用到全部</button>
       </div>
@@ -1763,10 +1773,14 @@ function openBatchModal() {
     const m = document.getElementById('bc-merchant').value.trim();
     const o = document.getElementById('bc-owner').value.trim();
     const c = document.getElementById('bc-cost').value.trim();
+    const p = document.getElementById('bc-platform').value.trim();
+    const n = document.getElementById('bc-note').value.trim();
     rows.forEach(rec => {
       if (m) rec.node.querySelector('[name="merchant"]').value = m;
       if (o) rec.node.querySelector('[name="owner_name"]').value = o;
       if (c) rec.node.querySelector('[name="cost"]').value = c;
+      if (p) rec.node.querySelector('[name="platform"]').value = p;
+      if (n) rec.node.querySelector('[name="note"]').value = n;
       updateSummary(rec);
     });
     toast('已应用到全部');

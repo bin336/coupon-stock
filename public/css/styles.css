@@ -243,6 +243,7 @@ body {
 .ac-item:hover, .ac-item.active { background: #fff7f2; }
 .field .req { color: var(--warn); }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.three { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
 .img-preview { margin-top: 8px; }
 .img-preview img { max-width: 140px; max-height: 140px; border-radius: 10px; border: 1px solid var(--line); }
 .modal-actions { display: flex; gap: 10px; margin-top: 8px; }
