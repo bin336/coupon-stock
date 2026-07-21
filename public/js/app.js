@@ -181,9 +181,9 @@ function renderApp() {
 
   <div class="stats">
     <div class="stat">
-      <div class="label">未售 · 未过期</div>
+      <div class="label">可售</div>
       <div class="value">${s.unsold_unexpired || 0}</div>
-      <div class="sub">张可售券 · 成本 ${fmtMoney(s.cost)}</div>
+      <div class="sub">成本 ${fmtMoney(s.cost)}</div>
     </div>
     <div class="stat" id="stat-pending" style="cursor:pointer">
       <div class="label">已售 · 待结算</div>
@@ -908,7 +908,7 @@ async function renderRecentSearches() {
 function renderStats() {
   const s = state.stats;
   const els = [
-    { sel: '.stat:nth-child(1) .value', val: s.unsold_unexpired || 0, sub: '.stat:nth-child(1) .sub', subText: '张可售券 · 成本 ' + fmtMoney(s.cost || 0) },
+    { sel: '.stat:nth-child(1) .value', val: s.unsold_unexpired || 0, sub: '.stat:nth-child(1) .sub', subText: '成本 ' + fmtMoney(s.cost || 0) },
     { sel: '.stat:nth-child(2) .value', val: fmtMoney(s.pending_amount || 0), sub: '.stat:nth-child(2) .sub', subText: '待结算金额' },
     { sel: '.stat:nth-child(3) .value', val: s.expiring_soon || 0, sub: '.stat:nth-child(3) .sub', subText: '需尽快售出' },
     { sel: '.stat:nth-child(4) .value', val: s.sold || 0, sub: '.stat:nth-child(4) .sub', subText: '面值 ' + fmtMoney(s.sold_face_value || 0) }
