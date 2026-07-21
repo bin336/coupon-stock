@@ -11,6 +11,7 @@ process.on('unhandledRejection', (reason) => {
 });
 
 const express = require('express');
+const compression = require('compression');
 const path = require('path');
 const fs = require('fs');
 const db = require('./db'); // sql.js 异步初始化
@@ -29,6 +30,7 @@ async function main() {
   try { couponRoutes.backfillPinyin(); } catch (e) { console.error('[backfill]', e.message); }
 
   const app = express();
+  app.use(compression()); // gzip 压缩：远程/Tailscale 慢链路上显著减小传输体积
   app.use(express.json());
 
   const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
@@ -49,12 +51,19 @@ async function main() {
       return res.status(401).end();
     }
     const f = path.join(UPLOAD_DIR, path.basename(req.params.file));
-    if (fs.existsSync(f)) res.sendFile(f);
-    else res.status(404).end();
+    if (fs.existsSync(f)) {
+      res.setHeader('Cache-Control', 'public, max-age=604800'); // 二维码截图缓存 7 天（文件名唯一，不会变）
+      res.sendFile(f);
+    } else res.status(404).end();
   });
 
-  // 静态前端
-  app.use(express.static(path.join(__dirname, '..', 'public')));
+  // 静态前端（带缓存：HTML 不缓存以便更新即时生效，JS/CSS/图片缓存 10 分钟加速重复打开）
+  app.use(express.static(path.join(__dirname, '..', 'public'), {
+    maxAge: '10m',
+    setHeaders: (res, filePath) => {
+      if (path.extname(filePath) === '.html') res.setHeader('Cache-Control', 'no-cache');
+    }
+  }));
 
   const PORT = process.env.PORT || 3000;
   app.listen(PORT, () => {
