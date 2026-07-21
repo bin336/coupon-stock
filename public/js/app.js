@@ -130,13 +130,13 @@ function buildQuery() {
 }
 async function loadData() {
   const [list, stats, daily] = await Promise.all([
-    api('GET', '/coupons?' + buildQuery()),
-    api('GET', '/coupons/stats'),
-    api('GET', '/coupons/daily')
+    api('GET', '/coupons?' + buildQuery()).catch(e => { console.warn('[loadData] 列表加载失败:', e.message); return null; }),
+    api('GET', '/coupons/stats').catch(e => { console.warn('[loadData] 统计加载失败:', e.message); return null; }),
+    api('GET', '/coupons/daily').catch(e => { console.warn('[loadData] 今日运营加载失败:', e.message); return null; })
   ]);
-  state.coupons = list.coupons;
-  state.stats = stats;
-  state.daily = daily;
+  if (list) state.coupons = list.coupons;
+  if (stats) state.stats = stats;
+  if (daily) state.daily = daily;
   renderStats();
   if (state.settlement) {
     renderSettlement(state.coupons.filter(c => c.status === 'sold' && !c.settled));
@@ -927,8 +927,8 @@ function renderDaily() {
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
   set('d-added', (d.added_count || 0) + ' 张');
   set('d-sold', (d.sold_count || 0) + ' 张');
-  set('d-settled', '¥' + fmtMoney(d.settled_amount || 0));
-  set('d-inv', '¥' + fmtMoney(d.inventory_value || 0));
+  set('d-settled', fmtMoney(d.settled_amount || 0));
+  set('d-inv', fmtMoney(d.inventory_value || 0));
   set('d-exp', (d.expiring_soon || 0) + ' 张');
 }
 
@@ -1658,7 +1658,7 @@ function openBatchModal() {
         </div>
         <div class="three">
           <div class="field" style="margin:10px 0 0">
-            <label>成本（每张，可留空）</label>
+            <label>成本</label>
             <input id="bc-cost" type="number" step="0.01" placeholder="0" />
           </div>
           <div class="field" style="margin:10px 0 0">
