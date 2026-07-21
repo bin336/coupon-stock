@@ -1592,24 +1592,50 @@ function rowInner() {
   return `
     <div class="br-head">
       <img class="br-thumb" alt="截图" />
-      <div class="br-status">等待识别…</div>
+      <div class="br-main">
+        <div class="br-line">等待识别…</div>
+        <div class="br-status">准备中…</div>
+      </div>
+      <button type="button" class="br-toggle" title="展开/收起编辑">展开</button>
       <button type="button" class="br-del" title="移除">✕</button>
     </div>
-    <div class="two">
-      <div class="field" style="margin:0"><label>商家 <span class="req">*</span></label><input name="merchant" placeholder="必填" /></div>
-      <div class="field" style="margin:0"><label>券号</label><input name="coupon_code" placeholder="选填" /></div>
-    </div>
-    <div class="two">
-      <div class="field" style="margin:0"><label>金额</label><input name="amount" type="number" step="0.01" placeholder="0" /></div>
-      <div class="field" style="margin:0"><label>张数</label><input name="quantity" type="number" min="1" value="1" /></div>
-    </div>
-    <div class="two">
-      <div class="field" style="margin:0"><label>过期时间 <span class="req">*</span></label><input name="expiry_date" type="date" required /></div>
-      <div class="field" style="margin:0"><label>成本</label><input name="cost" type="number" step="0.01" placeholder="0" /></div>
-    </div>
-    <div class="field" style="margin:0"><label>所有人</label>${ownerSelect({ name: 'owner_name', selected: state.user ? state.user.display_name : '' })}</div>
-    <div class="field" style="margin:0"><label>平台</label><input name="platform" placeholder="选填" /></div>
-    <div class="field" style="margin:0"><label>备注</label><input name="note" placeholder="选填" /></div>`;
+    <div class="br-body" hidden>
+      <div class="two">
+        <div class="field" style="margin:0"><label>商家 <span class="req">*</span></label><input name="merchant" placeholder="必填" /></div>
+        <div class="field" style="margin:0"><label>券号</label><input name="coupon_code" placeholder="选填" /></div>
+      </div>
+      <div class="two">
+        <div class="field" style="margin:0"><label>金额</label><input name="amount" type="number" step="0.01" placeholder="0" /></div>
+        <div class="field" style="margin:0"><label>张数</label><input name="quantity" type="number" min="1" value="1" /></div>
+      </div>
+      <div class="two">
+        <div class="field" style="margin:0"><label>过期时间 <span class="req">*</span></label><input name="expiry_date" type="date" required /></div>
+        <div class="field" style="margin:0"><label>成本</label><input name="cost" type="number" step="0.01" placeholder="0" /></div>
+      </div>
+      <div class="field" style="margin:0"><label>所有人</label>${ownerSelect({ name: 'owner_name', selected: state.user ? state.user.display_name : '' })}</div>
+      <div class="field" style="margin:0"><label>平台</label><input name="platform" placeholder="选填" /></div>
+      <div class="field" style="margin:0"><label>备注</label><input name="note" placeholder="选填" /></div>
+    </div>`;
+}
+
+// 根据当前各字段值，刷新卡片顶部的一行摘要（商家 / 面值 / 券号 / 过期 / 张数）
+function updateSummary(rec) {
+  const line = rec.node.querySelector('.br-line');
+  if (!line) return;
+  const v = n => { const el = rec.node.querySelector(`[name="${n}"]`); return el ? el.value.trim() : ''; };
+  const merchant = v('merchant');
+  const amount = v('amount');
+  const code = v('coupon_code');
+  const qty = v('quantity');
+  const exp = v('expiry_date');
+  const parts = [];
+  if (merchant) parts.push(`商家：${merchant}`);
+  if (amount) parts.push(`面值 ¥${amount}`);
+  if (code) parts.push(`券号 ${code}`);
+  if (exp) parts.push(`过期 ${exp}`);
+  if (qty && qty !== '1') parts.push(`×${qty}`);
+  line.textContent = parts.length ? parts.join('　·　') : '未填写任何信息';
+  line.classList.toggle('br-missing', !merchant); // 缺商家名时高亮提醒
 }
 
 function openBatchModal() {
@@ -1668,10 +1694,23 @@ function openBatchModal() {
         const idx = rows.findIndex(r => r.node === node);
         if (idx >= 0) rows.splice(idx, 1);
       };
+      // 展开/收起：默认收起，点开才显示完整输入框，避免多图时页面过长过挤
+      node.querySelector('.br-toggle').onclick = () => {
+        const body = node.querySelector('.br-body');
+        const willOpen = body.hidden;
+        body.hidden = !willOpen;
+        node.querySelector('.br-toggle').textContent = willOpen ? '收起' : '展开';
+        node.classList.toggle('expanded', willOpen);
+      };
+      // 任意字段改动后实时刷新顶部摘要行
+      node.querySelectorAll('.br-body [name]').forEach(el => {
+        el.addEventListener('input', () => updateSummary(rec));
+      });
       grid.appendChild(node);
       const rec = { file, imgSrc, node };
       file.__url = imgSrc;
       rows.push(rec);
+      updateSummary(rec);
       runRowOcr(rec);
     });
   }
@@ -1710,9 +1749,11 @@ function openBatchModal() {
         statusEl.className = 'br-status warn';
         statusEl.textContent = '未识别到关键信息，请手动填';
       }
+      updateSummary(rec); // 无论识别结果如何都刷新顶部摘要
     } catch (e) {
       statusEl.className = 'br-status warn';
       statusEl.textContent = '识别失败，请手动填';
+      updateSummary(rec);
     }
   }
 
@@ -1726,6 +1767,7 @@ function openBatchModal() {
       if (m) rec.node.querySelector('[name="merchant"]').value = m;
       if (o) rec.node.querySelector('[name="owner_name"]').value = o;
       if (c) rec.node.querySelector('[name="cost"]').value = c;
+      updateSummary(rec);
     });
     toast('已应用到全部');
   };

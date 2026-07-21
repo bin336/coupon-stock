@@ -315,14 +315,22 @@ body {
 .batch-common .bc-title { font-size: 13px; color: var(--accent); font-weight: 700; margin-bottom: 8px; }
 .batch-common .btn.ghost { margin-top: 10px; width: 100%; }
 .batch-grid { display: flex; flex-direction: column; gap: 12px; margin-top: 4px; max-height: 52vh; overflow-y: auto; padding-right: 2px; }
-.batch-row { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px; box-shadow: var(--shadow); }
-.batch-row .br-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-.batch-row .br-thumb { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; border: 1px solid var(--line); flex: 0 0 auto; }
-.batch-row .br-status { flex: 1; font-size: 12px; color: var(--muted); }
+.batch-row { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; box-shadow: var(--shadow); transition: box-shadow .15s, border-color .15s; }
+.batch-row.expanded { box-shadow: 0 6px 18px rgba(0,0,0,.10); border-color: var(--accent); }
+.batch-row .br-head { display: flex; align-items: center; gap: 10px; }
+.batch-row .br-thumb { width: 46px; height: 46px; border-radius: 8px; object-fit: cover; border: 1px solid var(--line); flex: 0 0 auto; }
+.batch-row .br-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.batch-row .br-line { font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.batch-row .br-line.br-missing { color: var(--warn); font-weight: 600; }
+.batch-row .br-status { font-size: 12px; color: var(--muted); }
 .batch-row .br-status.loading { color: #b45309; }
 .batch-row .br-status.ok { color: var(--ok); }
 .batch-row .br-status.warn { color: var(--warn); }
+.batch-row .br-toggle { border: 1px solid var(--line); background: var(--card); color: var(--accent); border-radius: 8px; padding: 4px 10px; font-size: 12px; cursor: pointer; flex: 0 0 auto; }
+.batch-row .br-toggle:hover { background: #fff5ef; }
 .batch-row .br-del { border: none; background: #fff0ee; color: var(--warn); border-radius: 8px; width: 28px; height: 28px; font-size: 14px; cursor: pointer; flex: 0 0 auto; }
+.batch-row .br-body { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); display: flex; flex-direction: column; gap: 10px; }
+.batch-row .br-body[hidden] { display: none; }
 .ocr-rawhint { font-size: 11px; color: var(--muted); margin-top: 4px; word-break: break-all; white-space: pre-wrap; background: #faf7f4; border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; max-height: 140px; overflow: auto; line-height: 1.55; }
 
 /* ---------- 报表 / 日志 工具栏 ---------- */
