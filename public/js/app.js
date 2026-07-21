@@ -174,6 +174,7 @@ function renderApp() {
       <div class="user">
         <div class="avatar">${escapeHtml((state.user.display_name || '?').slice(0,1))}</div>
         <span>${escapeHtml(state.user.display_name)}</span>
+        <button class="icon" id="btn-stats" style="display:inline-block">统计</button>
         <button class="icon" id="btn-settings" style="display:inline-block">设置</button>
         <button class="icon" id="btn-logout">退出</button>
       </div>
@@ -190,16 +191,6 @@ function renderApp() {
       <div class="value">${fmtMoney(s.pending_amount || 0)}</div>
       <div class="sub">待结算金额</div>
     </div>
-    <div class="stat alert clickable" id="stat-expiring" style="cursor:pointer">
-      <div class="label">7天内到期</div>
-      <div class="value">${s.expiring_soon || 0}</div>
-      <div class="sub">需尽快售出</div>
-    </div>
-    <div class="stat clickable" id="stat-sold" style="cursor:pointer">
-      <div class="label">已售出</div>
-      <div class="value">${s.sold || 0}</div>
-      <div class="sub">面值 ${fmtMoney(s.sold_face_value)}</div>
-    </div>
   </div>
 
   <div class="daily" id="daily-card">
@@ -214,6 +205,8 @@ function renderApp() {
   </div>
 
   ${getToolbar()}
+
+  <div id="stats-overview"></div>
 
   <div class="list" id="list"></div>
 
@@ -231,6 +224,10 @@ function renderApp() {
 
   // 统计卡片在所有视图（含子页面）都保持可点击
   bindStatCards();
+
+  // topbar「统计」入口：进入统计页（数据概览 + 已售明细报表）
+  const bStats = document.getElementById('btn-stats');
+  if (bStats) bStats.onclick = openReport;
 
   // 今日运营卡片在所有视图（含子页面）都填充：state.daily 为空时 renderDaily 内部会自行补拉 /daily
   renderDaily();
@@ -434,7 +431,6 @@ function getToolbar() {
         <button class="btn ghost seg-btn ${v === 'mine' ? 'active' : ''}" id="sv-mine">我的</button>
         ${isAdmin ? `<button class="btn ghost seg-btn ${v === 'all' ? 'active' : ''}" id="sv-all">全部</button>` : ''}
       </div>
-      ${isAdmin ? `<button class="btn ghost" id="sv-report">报表</button>` : ''}
     </div>`;
   }
   if (state.report) {
@@ -496,9 +492,51 @@ function getToolbar() {
 }
 
 /* ---------- 售出 / 利润报表 ---------- */
+// 统计页「数据概览」：把首页移除的两张卡片 + 常用运营指标集中展示，进统计页即可一站式查看
+function renderStatsOverview() {
+  const box = document.getElementById('stats-overview');
+  if (!box) return;
+  const s = state.stats || {};
+  const d = state.daily || {};
+  const m = fmtMoney;
+  const card = (label, val, sub, act) => `
+    <div class="ov-card ${act ? 'clickable' : ''}" ${act ? `data-act="${act}"` : ''}>
+      <div class="ov-label">${label}</div>
+      <div class="ov-val">${val}</div>
+      ${sub ? `<div class="ov-sub">${sub}</div>` : ''}
+    </div>`;
+  box.innerHTML = `
+    <div class="ov-title">📈 数据概览</div>
+    <div class="ov-grid">
+      ${card('可售券', (s.unsold_unexpired || 0) + ' 张', '成本 ' + m(s.cost))}
+      ${card('库存总值', m(s.face_value), '面值合计')}
+      ${card('潜在收益', m(s.potential), '面值 − 成本')}
+      ${card('已售(累计)', (s.sold || 0) + ' 张', '面值 ' + m(s.sold_face_value))}
+      ${card('待结算金额', m(s.pending_amount), (s.sold_unsettled || 0) + ' 张待结算', 'settlement')}
+      ${card('7天内到期', (d.expiring_soon || 0) + ' 张', '点查看明细', 'expiring')}
+      ${card('已过期未售', (s.expired_unsold || 0) + ' 张', '建议清理')}
+      ${card('今日录入', (d.added_count || 0) + ' 张', '面值 ' + m(d.added_face))}
+      ${card('今日售出', (d.sold_count || 0) + ' 张', '面值 ' + m(d.sold_face))}
+      ${card('今日结算额', m(d.settled_amount), '')}
+    </div>`;
+  const exp = box.querySelector('[data-act="expiring"]');
+  if (exp) exp.onclick = openExpiring;
+  const setl = box.querySelector('[data-act="settlement"]');
+  if (setl) setl.onclick = openSettlement;
+}
+
 async function openReport() {
-  state.report = true; state.rankings = false; state.logs = false; state.settlement = false; state.groupView = null; state.groupQ = ''; state.scope = 'default';
-  renderApp(); await loadReport();
+  state.report = true; state.rankings = false; state.logs = false; state.settlement = false; state.groupView = null; state.groupQ = ''; state.scope = 'default'; state.expiring = false;
+  renderApp();
+  // 确保概览所需的 stats / daily 数据已就绪（首页可能已加载，未加载则补拉）
+  if (!state.stats || !state.daily) {
+    try {
+      const [st, dy] = await Promise.all([ api('GET', '/coupons/stats'), api('GET', '/coupons/daily') ]);
+      state.stats = st; state.daily = dy;
+    } catch (e) { /* 概览缺失不阻断报表 */ }
+  }
+  renderStatsOverview();
+  await loadReport();
 }
 function bindReportToolbar() {
   const back = document.getElementById('btn-back');
@@ -1129,8 +1167,6 @@ function bindSettlementToolbar() {
   const all = document.getElementById('sv-all');
   if (mine) mine.onclick = () => { state.settlementView = 'mine'; renderApp(); loadData(); };
   if (all) all.onclick = () => { state.settlementView = 'all'; renderApp(); loadData(); };
-  const rep = document.getElementById('sv-report');
-  if (rep) rep.onclick = openReport;
 }
 // 单张券的结算明细行（显示商家/券号/方向/金额，可点「结算」）
 function settleItemLine(c) {
