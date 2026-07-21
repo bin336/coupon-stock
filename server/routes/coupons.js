@@ -144,7 +144,7 @@ router.get('/stats', authMiddleware, (req, res) => {
   const soldFaceValue = sold.reduce((s, c) => s + (c.amount || 0) * (c.quantity || 1), 0);
   const expiredUnsold = all.filter(c => c.status === 'unsold' && c.expiry_date && c.expiry_date < today);
   const faceValue = unsoldUnexpired.reduce((s, c) => s + (c.amount || 0) * (c.quantity || 1), 0);
-  const cost = unsoldUnexpired.reduce((s, c) => s + (c.cost || 0), 0);
+  const cost = unsoldUnexpired.reduce((s, c) => s + (c.cost || 0) * (c.quantity || 1), 0);
   const potential = faceValue - cost;
   // 7 天内到期（未售且未过期、到期日 <= 今天+7）
   const [y, m, d] = today.split('-').map(Number);
