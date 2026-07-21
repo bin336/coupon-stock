@@ -126,24 +126,48 @@ function parseFields(text) {
   return fields;
 }
 
+let workerPromise = null;  // 单例 worker（懒加载 + 复用），避免每次请求都重建 3~8s 的初始化
+
+// 获取（或在首次/崩溃后重建）worker；用 Promise 锁防止并发重复创建
+async function getWorker() {
+  if (!workerPromise) {
+    workerPromise = Tesseract.createWorker('chi_sim+eng', 1, { cachePath: TESS_CACHE })
+      .catch(e => { workerPromise = null; throw e; });
+  }
+  return workerPromise;
+}
+
+// 预热：服务启动时提前初始化 worker，把一次性的 WASM + 语言包加载前置到部署期，
+// 用户首次识别即可享受「复用 worker」的秒级速度，而非每次都等建 worker。
+async function warmup() {
+  try { await getWorker(); console.log('[OCR] worker 已预热（复用模式，后续识别约 1 秒）'); }
+  catch (e) { console.error('[OCR] worker 预热失败（首次识别时会重试）:', e.message); }
+}
+
 async function recognize(imagePath) {
-  // chi_sim+eng：中文 + 英文/数字；traineddata 首次自动下载并缓存到 data/tessdata
-  const worker = await Tesseract.createWorker('chi_sim+eng', 1, { cachePath: TESS_CACHE });
+  const worker = await getWorker();
   // 超时保护：损坏图片可能让底层原生 Abort 且不在 Promise 链内（unhandled），
   // 用超时兜底让请求一定能在阈值内以「识别失败」优雅结束，而非卡死。
   let timer;
   const timeout = new Promise((_, reject) => {
     timer = setTimeout(() => reject(new Error('OCR 处理超时（图片可能已损坏）')), 20000);
   });
+  // 先 attached 一个 no-op catch，防止「超时胜出」后底层 recognize 的 reject 变成 unhandledRejection
+  const pending = worker.recognize(imagePath).catch(() => null);
   try {
-    const pending = worker.recognize(imagePath);
     const { data } = await Promise.race([pending, timeout]);
-    const raw = (data.text || '').replace(/\r/g, '').trim();
+    const raw = ((data && data.text) || '').replace(/\r/g, '').trim();
     return { raw, fields: parseFields(collapseSpacedCodes(raw)) };
+  } catch (e) {
+    // 坏图/原生崩溃：销毁并清空 worker，下次请求自动重建（保持「坏图不拖垮服务」的隔离性）
+    try { await worker.terminate(); } catch (_) {}
+    workerPromise = null;
+    throw e;
   } finally {
     clearTimeout(timer);
-    try { await worker.terminate(); } catch (_) {}
   }
 }
 
-module.exports = { recognize, parseFields };
+module.exports = { recognize, parseFields, warmup };
+// 服务启动即预热（后台进行，失败不影响启动）
+warmup();
