@@ -200,7 +200,7 @@ function renderApp() {
       <div class="dstat"><div class="dval" id="d-sold">-</div><div class="dlabel">今日售出</div></div>
       <div class="dstat"><div class="dval" id="d-settled">-</div><div class="dlabel">今日结算额</div></div>
       <div class="dstat"><div class="dval" id="d-inv">-</div><div class="dlabel">库存总值</div></div>
-      <div class="dstat alert"><div class="dval" id="d-exp">-</div><div class="dlabel">7天内到期</div></div>
+      <div class="dstat alert clickable" id="d-exp-card"><div class="dval" id="d-exp">-</div><div class="dlabel">7天内到期 ›</div></div>
     </div>
   </div>
 
@@ -228,6 +228,10 @@ function renderApp() {
   // topbar「统计」入口：进入统计页（数据概览 + 已售明细报表）
   const bStats = document.getElementById('btn-stats');
   if (bStats) bStats.onclick = openReport;
+
+  // 今日运营卡片「7天内到期」项 → 进入到期列表
+  const expCard = document.getElementById('d-exp-card');
+  if (expCard) expCard.onclick = openExpiring;
 
   // 今日运营卡片在所有视图（含子页面）都填充：state.daily 为空时 renderDaily 内部会自行补拉 /daily
   renderDaily();
@@ -947,9 +951,7 @@ function renderStats() {
   const s = state.stats;
   const els = [
     { sel: '.stat:nth-child(1) .value', val: s.unsold_unexpired || 0, sub: '.stat:nth-child(1) .sub', subText: '成本 ' + fmtMoney(s.cost || 0) },
-    { sel: '.stat:nth-child(2) .value', val: fmtMoney(s.pending_amount || 0), sub: '.stat:nth-child(2) .sub', subText: '待结算金额' },
-    { sel: '.stat:nth-child(3) .value', val: s.expiring_soon || 0, sub: '.stat:nth-child(3) .sub', subText: '需尽快售出' },
-    { sel: '.stat:nth-child(4) .value', val: s.sold || 0, sub: '.stat:nth-child(4) .sub', subText: '面值 ' + fmtMoney(s.sold_face_value || 0) }
+    { sel: '.stat:nth-child(2) .value', val: fmtMoney(s.pending_amount || 0), sub: '.stat:nth-child(2) .sub', subText: '待结算金额' }
   ];
   const container = document.querySelector('.stats');
   if (!container) return;

@@ -79,6 +79,9 @@ body {
 .dstat .dval { font-size: 15px; font-weight: 800; color: var(--accent); line-height: 1.15; }
 .dstat.alert .dval { color: var(--warn); }
 .dstat .dlabel { font-size: 10px; color: var(--muted); margin-top: 3px; }
+.dstat.clickable { cursor: pointer; transition: transform .12s ease, box-shadow .12s ease; }
+.dstat.clickable:active { transform: scale(.97); }
+.dstat.clickable:hover { box-shadow: 0 4px 14px rgba(255,90,31,.18); }
 
 /* 重复录入确认弹窗 */
 .dup-modal { max-width: 360px; }
