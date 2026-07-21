@@ -232,6 +232,9 @@ function renderApp() {
   // 统计卡片在所有视图（含子页面）都保持可点击
   bindStatCards();
 
+  // 今日运营卡片在所有视图（含子页面）都填充：state.daily 为空时 renderDaily 内部会自行补拉 /daily
+  renderDaily();
+
   // 报表 / 日志 / 结算 / 排行 视图：工具栏与列表独立渲染，不再绑定默认搜索/筛选
   if (state.report) { bindReportToolbar(); loadReport(); return; }
   if (state.logs) { bindLogToolbar(); loadLogs(); return; }
