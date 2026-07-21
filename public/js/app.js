@@ -1523,8 +1523,8 @@ function openCouponModal(coupon, prefill) {
   });
 
   // 提交（可带 force=1 强制越过重复录入拦截）
-  async function doSubmit(force) {
-    const fd2 = new FormData(form);
+  async function doSubmit(formEl, force) {
+    const fd2 = new FormData(formEl);
     if (!input.files.length) fd2.delete('image');  // 未选新图时不传 image（编辑时保留旧图）
     if (force) fd2.set('force', '1');
     if (isEdit) await api('PUT', '/coupons/' + c.id, fd2, true);
@@ -1538,7 +1538,7 @@ function openCouponModal(coupon, prefill) {
     if (btn && btn.disabled) return;            // 防重复提交：请求期间已锁则忽略连点
     if (btn) { btn.dataset.label = btn.textContent; btn.textContent = isEdit ? '保存中…' : '入库中…'; btn.disabled = true; }
     try {
-      await doSubmit(false);
+      await doSubmit(form, false);
       closeModal();
       toast(isEdit ? '已保存' : '入库成功');
       loadData();
@@ -1547,7 +1547,7 @@ function openCouponModal(coupon, prefill) {
       if (dups && dups.length) {              // 疑似重复：弹确认，确认后强制录入
         if (btn) { btn.disabled = false; btn.textContent = btn.dataset.label || (isEdit ? '保存修改' : '入库'); }
         showDuplicateConfirm(dups, () => {
-          doSubmit(true).then(() => { closeModal(); toast('已录入'); loadData(); })
+          doSubmit(form, true).then(() => { closeModal(); toast('已录入'); loadData(); })
             .catch(e2 => { toast(e2.message || '保存失败'); if (btn) { btn.disabled = false; btn.textContent = btn.dataset.label || (isEdit ? '保存修改' : '入库'); } });
         });
         return;
