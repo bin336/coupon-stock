@@ -188,7 +188,7 @@ router.get('/merchants', authMiddleware, (req, res) => {
 });
 
 // 售出 / 利润报表：按「所有人」分组，支持时间段（sold_at）与所有人筛选。仅管理员。
-router.get('/report', authMiddleware, adminOnly, (req, res) => {
+router.get('/report', authMiddleware, (req, res) => {
   const { owner, start, end } = req.query;
   const params = [];
   let sql = "SELECT * FROM coupons WHERE status = 'sold'";

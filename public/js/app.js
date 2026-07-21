@@ -174,6 +174,7 @@ function renderApp() {
       <div class="user">
         <div class="avatar">${escapeHtml((state.user.display_name || '?').slice(0,1))}</div>
         <span>${escapeHtml(state.user.display_name)}</span>
+        <button class="icon" id="btn-rank" style="display:inline-block">排行</button>
         <button class="icon" id="btn-stats" style="display:inline-block">统计</button>
         <button class="icon" id="btn-settings" style="display:inline-block">设置</button>
         <button class="icon" id="btn-logout">退出</button>
@@ -228,6 +229,9 @@ function renderApp() {
   // topbar「统计」入口：进入统计页（数据概览 + 已售明细报表）
   const bStats = document.getElementById('btn-stats');
   if (bStats) bStats.onclick = openReport;
+  // topbar「排行」入口：进入排行榜（三大排行，所有人可见）
+  const bRank = document.getElementById('btn-rank');
+  if (bRank) bRank.onclick = openRankings;
 
   // 今日运营卡片「7天内到期」项 → 进入到期列表
   const expCard = document.getElementById('d-exp-card');
@@ -416,7 +420,7 @@ function getToolbar() {
   if (state.rankings) {
     return `<div class="toolbar">
       <button class="btn ghost" id="btn-back">← 返回</button>
-      <div class="tb-title">📊 数据报表</div>
+      <div class="tb-title">🏆 排行榜</div>
     </div>`;
   }
   if (state.expiring) {
