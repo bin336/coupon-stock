@@ -57,11 +57,16 @@ async function main() {
     } else res.status(404).end();
   });
 
-  // 静态前端（带缓存：HTML 不缓存以便更新即时生效，JS/CSS/图片缓存 10 分钟加速重复打开）
+  // 静态前端：
+  // - HTML / JS / CSS 用 no-cache（每次都经 ETag 校验，改完即时生效，避免预览/开发时被旧缓存挡住）
+  // - 图片等其余静态资源缓存 1 天（变动极少，加速重复打开）
   app.use(express.static(path.join(__dirname, '..', 'public'), {
-    maxAge: '10m',
+    maxAge: '1d',
     setHeaders: (res, filePath) => {
-      if (path.extname(filePath) === '.html') res.setHeader('Cache-Control', 'no-cache');
+      const ext = path.extname(filePath);
+      if (ext === '.html' || ext === '.js' || ext === '.css') {
+        res.setHeader('Cache-Control', 'no-cache');
+      }
     }
   }));
 
