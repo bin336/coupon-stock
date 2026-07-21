@@ -3,8 +3,9 @@ services:
     build: .
     container_name: coupon-stock
     restart: unless-stopped
-    ports:
-      - "3000:3000"
+    # host 模式：容器直接使用 NAS 主机网络，Tailscale 虚拟网卡的 100.x.x.x 才能访问到服务
+    # （若用 ports: 映射，只会绑定局域网网卡，手机经 Tailscale 访问会报 Forbidden）
+    network_mode: host
     environment:
       - PORT=3000
       - DATA_DIR=/app/data
