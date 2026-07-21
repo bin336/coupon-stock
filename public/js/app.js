@@ -921,10 +921,24 @@ function renderStats() {
 }
 
 // 今日运营卡片：用 /coupons/daily 的数据填充（开局一眼看全局）
+// 渲染时若 state.daily 为空则自动补拉一次，确保任何视图切换后都能显示数据
 function renderDaily() {
   const d = state.daily;
-  if (!d) return;
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  if (!d) {
+    // 数据还没就绪：先显示占位，然后后台静默拉取
+    ['d-added','d-sold','d-settled','d-inv','d-exp'].forEach(id => set(id, '—'));
+    // 避免重复请求：标记"正在加载"
+    if (!state._dailyLoading) {
+      state._dailyLoading = true;
+      api('GET', '/coupons/daily')
+        .then(data => { state.daily = data; renderDaily(); })
+        .catch(() => {})   // 失败保持 —，不弹 toast
+        .finally(() => { state._dailyLoading = false; });
+    }
+    return;
+  }
+  state._dailyLoading = false;
   set('d-added', (d.added_count || 0) + ' 张');
   set('d-sold', (d.sold_count || 0) + ' 张');
   set('d-settled', fmtMoney(d.settled_amount || 0));
