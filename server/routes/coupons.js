@@ -98,6 +98,8 @@ router.get('/', authMiddleware, (req, res) => {
     params.push(status);
   }
   const today = todayLocal();
+  const dayStart = today + ' 00:00:00';
+  const dayEnd = today + ' 23:59:59';
   if (expired === '0') {
     sql += ' AND (expiry_date IS NULL OR expiry_date >= ?)';
     params.push(today);
@@ -105,6 +107,14 @@ router.get('/', authMiddleware, (req, res) => {
   if (expired === '1') {
     sql += ' AND expiry_date IS NOT NULL AND expiry_date < ?';
     params.push(today);
+  }
+  if (req.query.added_today === '1') {
+    sql += ' AND created_at >= ? AND created_at <= ?';
+    params.push(dayStart, dayEnd);
+  }
+  if (req.query.sold_today === '1') {
+    sql += " AND status = 'sold' AND sold_at >= ? AND sold_at <= ?";
+    params.push(dayStart, dayEnd);
   }
   if (q) {
     // 分词搜索：每个空格分隔的词都要命中任一字段（商家/券号/所有人/平台/备注/拼音/面值）

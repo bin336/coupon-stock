@@ -13,6 +13,8 @@ const state = {
   logs: false,        // 是否处于操作日志视图
   rankings: false,    // 是否处于数据报表（三大排行）视图
   expiring: false,    // 是否处于 7天内到期 视图
+  detail: false,      // 是否处于「今日运营」明细详情视图（今日录入/今日售出/库存总值）
+  detailType: '',     // added-today | sold-today | inventory
   groupView: null,    // 汇总分组视图：null | 'merchant' | 'owner'
   groupQ: '',         // 汇总页内搜索（按分组键商家/所有人过滤）
   faceFilter: null,   // 面值快捷筛选（精确匹配 amount，如 100）
@@ -181,26 +183,13 @@ function renderApp() {
       </div>
   </div>
 
-  <div class="stats">
-    <div class="stat">
-      <div class="label">可售</div>
-      <div class="value">${s.unsold_unexpired || 0}</div>
-      <div class="sub">成本 ${fmtMoney(s.cost)}</div>
-    </div>
-    <div class="stat" id="stat-pending" style="cursor:pointer">
-      <div class="label">已售 · 待结算</div>
-      <div class="value">${fmtMoney(s.pending_amount || 0)}</div>
-      <div class="sub">待结算金额</div>
-    </div>
-  </div>
-
   <div class="daily" id="daily-card">
     <div class="daily-title">📅 今日运营</div>
     <div class="daily-grid">
-      <div class="dstat"><div class="dval" id="d-added">-</div><div class="dlabel">今日录入</div></div>
-      <div class="dstat"><div class="dval" id="d-sold">-</div><div class="dlabel">今日售出</div></div>
-      <div class="dstat"><div class="dval" id="d-settled">-</div><div class="dlabel">今日结算额</div></div>
-      <div class="dstat"><div class="dval" id="d-inv">-</div><div class="dlabel">库存总值</div></div>
+      <div class="dstat clickable" id="d-added-card"><div class="dval" id="d-added">-</div><div class="dlabel">今日录入 ›</div></div>
+      <div class="dstat clickable" id="d-sold-card"><div class="dval" id="d-sold">-</div><div class="dlabel">今日售出 ›</div></div>
+      <div class="dstat clickable" id="d-pending-card"><div class="dval" id="d-pending">-</div><div class="dlabel">已售待结算 ›</div></div>
+      <div class="dstat clickable" id="d-inv-card"><div class="dval" id="d-inv">-</div><div class="dlabel">库存总值 ›</div></div>
       <div class="dstat alert clickable" id="d-exp-card"><div class="dval" id="d-exp">-</div><div class="dlabel">7天内到期 ›</div></div>
     </div>
   </div>
@@ -211,7 +200,7 @@ function renderApp() {
 
   <div class="list" id="list"></div>
 
-  ${state.report || state.logs || state.settlement || state.rankings || state.expiring ? '' : `
+  ${state.report || state.logs || state.settlement || state.rankings || state.expiring || state.detail ? '' : `
   <div class="fab-backdrop" id="fab-backdrop" style="display:none"></div>
   <div class="fab-menu" id="fab-menu" style="display:none">
     <button class="fab-item" id="fab-batch">批量录入</button>
@@ -236,6 +225,15 @@ function renderApp() {
   // 今日运营卡片「7天内到期」项 → 进入到期列表
   const expCard = document.getElementById('d-exp-card');
   if (expCard) expCard.onclick = openExpiring;
+  // 今日运营卡片其余各项 → 各自明细详情入口
+  const addCard = document.getElementById('d-added-card');
+  if (addCard) addCard.onclick = () => openDetail('added-today');
+  const soldCard = document.getElementById('d-sold-card');
+  if (soldCard) soldCard.onclick = () => openDetail('sold-today');
+  const pendCard = document.getElementById('d-pending-card');
+  if (pendCard) pendCard.onclick = openSettlement;   // 已售待结算 → 结算明细
+  const invCard = document.getElementById('d-inv-card');
+  if (invCard) invCard.onclick = () => openDetail('inventory');
 
   // 今日运营卡片在所有视图（含子页面）都填充：state.daily 为空时 renderDaily 内部会自行补拉 /daily
   renderDaily();
@@ -253,6 +251,11 @@ function renderApp() {
   }
   if (state.expiring) {
     bindExpiringToolbar();
+    return;
+  }
+  if (state.detail) {
+    bindDetailToolbar();
+    loadDetail();
     return;
   }
   if (state.groupView) {
@@ -312,15 +315,9 @@ function renderApp() {
   renderRecentSearches();
 }
 
-/* ---------- 统计卡片：跨页面常驻可点击 ---------- */
+/* ---------- 统计卡片：跨页面常驻可点击（首页 .stats 卡片已移除，保留空函数不报错） ---------- */
 function bindStatCards() {
-  const statPending = document.getElementById('stat-pending');
-  // 「待结算」卡片：所有人（含普通用户）均可进入结算模块查看自己的待结算
-  if (statPending) statPending.onclick = openSettlement;
-  const statSold = document.getElementById('stat-sold');
-  if (statSold) statSold.onclick = openRankings;
-  const statExpiring = document.getElementById('stat-expiring');
-  if (statExpiring) statExpiring.onclick = openExpiring;
+  // 首页「可售 / 已售·待结算」两张统计卡片已移除，对应入口现改为「今日运营」卡片内的明细项
 }
 
 /* ---------- 分组汇总（按商家 / 按所有人，同分组多面值一目了然） ---------- */
@@ -334,7 +331,7 @@ async function openGroup(key) {
   state.groupView = key;
   state.groupQ = '';
   state.q = ''; state.faceFilter = null;
-  state.report = false; state.logs = false; state.settlement = false; state.rankings = false; state.expiring = false;
+  state.report = false; state.logs = false; state.settlement = false; state.rankings = false; state.expiring = false; state.detail = false;
   renderApp(); loadData();
 }
 
@@ -410,7 +407,7 @@ function bindGroupToolbar(key) {
 
 /* ---------- 首页 ---------- */
 async function goHome() {
-  state.report = false; state.logs = false; state.settlement = false; state.rankings = false; state.expiring = false; state.groupView = null;
+  state.report = false; state.logs = false; state.settlement = false; state.rankings = false; state.expiring = false; state.groupView = null; state.detail = false;
   state.scope = 'default'; state.q = ''; state.faceFilter = null; state.groupQ = '';
   renderApp(); loadData(); loadUsers();
 }
@@ -428,6 +425,18 @@ function getToolbar() {
       <button class="btn ghost" id="btn-back">← 返回</button>
       <div class="tb-title">⏰ 7天内到期</div>
       <span class="exp-badge" id="exp-count">—</span>
+    </div>`;
+  }
+  if (state.detail) {
+    const DETAIL_TITLE = {
+      'added-today': '📥 今日录入',
+      'sold-today': '💰 今日售出',
+      'inventory': '📦 库存总值'
+    };
+    return `<div class="toolbar">
+      <button class="btn ghost" id="btn-back">← 返回</button>
+      <div class="tb-title">${DETAIL_TITLE[state.detailType] || '明细'}</div>
+      <span class="exp-badge" id="detail-count">—</span>
     </div>`;
   }
   if (state.settlement) {
@@ -534,7 +543,7 @@ function renderStatsOverview() {
 }
 
 async function openReport() {
-  state.report = true; state.rankings = false; state.logs = false; state.settlement = false; state.groupView = null; state.groupQ = ''; state.scope = 'default'; state.expiring = false;
+  state.report = true; state.rankings = false; state.logs = false; state.settlement = false; state.groupView = null; state.groupQ = ''; state.scope = 'default'; state.expiring = false; state.detail = false;
   renderApp();
   // 确保概览所需的 stats / daily 数据已就绪（首页可能已加载，未加载则补拉）
   if (!state.stats || !state.daily) {
@@ -548,7 +557,7 @@ async function openReport() {
 }
 function bindReportToolbar() {
   const back = document.getElementById('btn-back');
-  if (back) back.onclick = () => { state.report = false; renderApp(); loadData(); loadUsers(); };
+  if (back) back.onclick = () => { state.report = false; state.detail = false; renderApp(); loadData(); loadUsers(); };
   const settle = document.getElementById('rf-settle');
   if (settle) settle.onclick = openSettlement;
   const go = document.getElementById('rf-go');
@@ -618,12 +627,12 @@ function renderReport(data) {
 
 /* ---------- 数据报表（三大排行） ---------- */
 async function openRankings() {
-  state.rankings = true; state.report = false; state.logs = false; state.settlement = false; state.groupView = null; state.groupQ = ''; state.scope = 'default';
+  state.rankings = true; state.report = false; state.logs = false; state.settlement = false; state.groupView = null; state.groupQ = ''; state.scope = 'default'; state.detail = false;
   renderApp(); await loadRankings();
 }
 function bindRankingsToolbar() {
   const back = document.getElementById('btn-back');
-  if (back) back.onclick = () => { state.rankings = false; renderApp(); loadData(); loadUsers(); };
+  if (back) back.onclick = () => { state.rankings = false; state.detail = false; renderApp(); loadData(); loadUsers(); };
 }
 
 /* ---------- 7天内到期视图 ---------- */
@@ -638,7 +647,7 @@ function soonDate() {
   return dt.getFullYear() + '-' + mm + '-' + dd;
 }
 async function openExpiring() {
-  state.report = false; state.logs = false; state.settlement = false; state.rankings = false; state.groupView = null; state.groupQ = ''; state.expiring = true;
+  state.report = false; state.logs = false; state.settlement = false; state.rankings = false; state.groupView = null; state.groupQ = ''; state.expiring = true; state.detail = false;
   state.scope = 'default'; state.q = '';
   renderApp();
   try {
@@ -654,6 +663,41 @@ function bindExpiringToolbar() {
   const back = document.getElementById('btn-back');
   if (back) back.onclick = goHome;
 }
+
+/* ---------- 今日运营「明细详情」视图（今日录入 / 今日售出 / 库存总值） ---------- */
+async function openDetail(type) {
+  state.detail = true; state.detailType = type;
+  state.report = false; state.logs = false; state.settlement = false; state.rankings = false; state.expiring = false; state.groupView = null; state.groupQ = '';
+  state.q = ''; state.faceFilter = null; state.scope = (type === 'sold-today') ? 'sold' : 'default';
+  renderApp();
+  await loadDetail();
+}
+function bindDetailToolbar() {
+  const back = document.getElementById('btn-back');
+  if (back) back.onclick = goHome;
+}
+// 把日期/状态筛选拼到 /coupons 查询串（复用现有列表接口与 couponCard 渲染，零额外接口）
+async function loadDetail() {
+  const type = state.detailType;
+  const DETAIL_TITLE = {
+    'added-today': '📥 今日录入',
+    'sold-today': '💰 今日售出',
+    'inventory': '📦 库存总值'
+  };
+  try {
+    let q = '';
+    if (type === 'added-today') q = '?added_today=1';
+    else if (type === 'sold-today') q = '?sold_today=1';
+    else if (type === 'inventory') q = '?status=unsold&expired=0';
+    const data = await api('GET', '/coupons' + q);
+    state.coupons = data.coupons || [];
+    state.scope = (type === 'sold-today') ? 'sold' : 'default';
+    renderList();
+    const c = document.getElementById('detail-count');
+    if (c) c.textContent = state.coupons.length + ' 张';
+  } catch (e) { toast(e.message); }
+}
+
 async function loadRankings() {
   try {
     const data = await api('GET', '/rankings');
@@ -869,12 +913,12 @@ function openChangelog() {
 
 /* ---------- 操作日志 ---------- */
 async function openLogs() {
-  state.logs = true; state.report = false; state.rankings = false; state.settlement = false; state.groupView = null; state.groupQ = '';
+  state.logs = true; state.report = false; state.rankings = false; state.settlement = false; state.groupView = null; state.groupQ = ''; state.detail = false;
   renderApp(); await loadLogs();
 }
 function bindLogToolbar() {
   const back = document.getElementById('btn-back');
-  if (back) back.onclick = () => { state.logs = false; renderApp(); loadData(); loadUsers(); };
+  if (back) back.onclick = () => { state.logs = false; state.detail = false; renderApp(); loadData(); loadUsers(); };
   const go = document.getElementById('lf-go');
   if (go) go.onclick = async () => {
     state.logFilters.action = document.getElementById('lf-action').value;
@@ -974,7 +1018,7 @@ function renderDaily() {
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
   if (!d) {
     // 数据还没就绪：先显示占位，然后后台静默拉取
-    ['d-added','d-sold','d-settled','d-inv','d-exp'].forEach(id => set(id, '—'));
+    ['d-added','d-sold','d-pending','d-inv','d-exp'].forEach(id => set(id, '—'));
     // 避免重复请求：标记"正在加载"
     if (!state._dailyLoading) {
       state._dailyLoading = true;
@@ -988,7 +1032,7 @@ function renderDaily() {
   state._dailyLoading = false;
   set('d-added', (d.added_count || 0) + ' 张');
   set('d-sold', (d.sold_count || 0) + ' 张');
-  set('d-settled', fmtMoney(d.settled_amount || 0));
+  set('d-pending', fmtMoney((state.stats && state.stats.pending_amount) || 0));
   set('d-inv', fmtMoney(d.inventory_value || 0));
   set('d-exp', (d.expiring_soon || 0) + ' 张');
 }
@@ -1157,7 +1201,7 @@ function bindListEvents() {
 
 /* ---------- 结算模块 ---------- */
 async function openSettlement() {
-  state.report = false; state.logs = false; state.rankings = false; state.groupView = null; state.groupQ = '';
+  state.report = false; state.logs = false; state.rankings = false; state.groupView = null; state.groupQ = ''; state.detail = false;
   state.scope = 'sold';
   state.q = '';
   state.settlement = true;
@@ -1168,7 +1212,7 @@ async function openSettlement() {
 }
 function bindSettlementToolbar() {
   const back = document.getElementById('btn-back');
-  if (back) back.onclick = () => { state.settlement = false; state.scope = 'default'; renderApp(); loadData(); };
+  if (back) back.onclick = () => { state.settlement = false; state.detail = false; state.scope = 'default'; renderApp(); loadData(); };
   const mine = document.getElementById('sv-mine');
   const all = document.getElementById('sv-all');
   if (mine) mine.onclick = () => { state.settlementView = 'mine'; renderApp(); loadData(); };
