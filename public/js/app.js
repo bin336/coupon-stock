@@ -997,17 +997,19 @@ async function renderRecentSearches() {
 /* ---------- 统计区独立刷新（避免重绘整个 App） ---------- */
 function renderStats() {
   const s = state.stats;
-  const els = [
-    { sel: '.stat:nth-child(1) .value', val: s.unsold_unexpired || 0, sub: '.stat:nth-child(1) .sub', subText: '成本 ' + fmtMoney(s.cost || 0) },
-    { sel: '.stat:nth-child(2) .value', val: fmtMoney(s.pending_amount || 0), sub: '.stat:nth-child(2) .sub', subText: '待结算金额' }
-  ];
   const container = document.querySelector('.stats');
-  if (!container) return;
-  els.forEach(e => {
-    const el = container.querySelector(e.sel);
-    if (el) el.textContent = e.val;
-    if (e.sub) { const sub = container.querySelector(e.sub); if (sub) sub.textContent = e.subText; }
-  });
+  if (container) {
+    const els = [
+      { sel: '.stat:nth-child(1) .value', val: s.unsold_unexpired || 0, sub: '.stat:nth-child(1) .sub', subText: '成本 ' + fmtMoney(s.cost || 0) },
+      { sel: '.stat:nth-child(2) .value', val: fmtMoney(s.pending_amount || 0), sub: '.stat:nth-child(2) .sub', subText: '待结算金额' }
+    ];
+    els.forEach(e => {
+      const el = container.querySelector(e.sel);
+      if (el) el.textContent = e.val;
+      if (e.sub) { const sub = container.querySelector(e.sub); if (sub) sub.textContent = e.subText; }
+    });
+  }
+  // 今日运营卡片的「已售待结算」来自 stats.pending_amount，无论 .stats 容器是否存在都要刷新（首页 .stats 已移除）
   renderDaily();
 }
 
